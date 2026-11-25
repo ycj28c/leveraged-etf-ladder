@@ -12,7 +12,7 @@
     <h1>杠杆 ETF 阶梯加仓</h1>
     <span id="dataInfo" class="muted">加载数据中…</span>
   </div>
-  <p class="warn">仅为个人研究工具,<b>不构成投资建议</b>。合成数据偏乐观,未计税与滑点;杠杆 ETF 可能出现 −80% 以上回撤。</p>
+  <p class="warn">仅为个人研究工具,<b>不构成投资建议</b>。合成数据偏乐观,未计税与滑点;杠杆 ETF(如 TQQQ)可能出现 −99% 左右的回撤。</p>
 </header>
 
 <div class="layout">
@@ -114,7 +114,7 @@
           <label>实际 QLD 市值 <input id="a_b2" type="number"></label>
           <label>实际现金 <input id="a_cash" type="number"></label>
         </div>
-        <div><button id="nowBtn" class="primary">计算</button> <span class="muted small">持仓可不填,不填则按规则模拟持仓。</span></div>
+        <div class="actions"><button id="nowBtn" class="primary">计算</button><button id="nowResetBtn">恢复默认</button><span class="muted small">持仓可不填,不填则按规则模拟持仓。</span></div>
       </div>
       <div id="nowOut"></div>
     </main>
@@ -129,7 +129,7 @@
         <div class="card"><h4>3 · TQQQ 上限</h4><p>只在<b>买入时</b>检查:可买量 = 上限 × 总资产 − 现有 TQQQ,不够就按比例缩减。上涨后占比超过上限不会强制卖出。</p></div>
         <div class="card"><h4>4 · 回补</h4><p>QQQ ≥ <b>前高 + (前高 − 谷底)</b> 时,一次性恢复平常仓位、TQQQ 清零、前高解冻,开始下一轮。</p></div>
         <div class="card"><h4>5 · 动态上限(可选)</h4><p>每年初用 <b>K ÷ 过去 252 日 QQQ 波动率</b> 计算上限,并夹在上下限之间。波动大的年份上限更低。</p></div>
-        <div class="card"><h4>6 · 外部资金(可选)</h4><p>回撤达到 −35/−40/−45/−50% 时各追加一笔(默认占起始资金 10%)。收益用时间加权(TWR)与 IRR 分别衡量。</p></div>
+        <div class="card"><h4>6 · 外部资金(可选)</h4><p>回撤超过 −35% 后,每再跌 5% 追加一笔(默认占起始资金 10%)。左侧默认设到 −50%,可在"外部资金"里补到 −80%。收益用时间加权(TWR)与 IRR 分别衡量。</p></div>
       </div>
 
       <h3>默认阶梯</h3>
@@ -141,9 +141,19 @@
           <tr><td>−20%</td><td>1/3</td><td>1/3</td><td>TQQQ</td></tr>
           <tr><td>−25%</td><td>1/2</td><td>1/2</td><td>TQQQ</td></tr>
           <tr><td>−30%</td><td>全部</td><td>全部</td><td>TQQQ</td></tr>
+          <tr><td>−35%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−40%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−45%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−50%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−55%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−60%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−65%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−70%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−75%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
+          <tr><td>−80%</td><td>—</td><td>—</td><td>外部资金 +10% 起始资金</td></tr>
         </tbody>
       </table>
-      <p class="muted">平常仓位默认:TQQQ 0 / 底仓 70 / QLD 15 / 现金 15(%)。比例都是"剩余持仓的比例",不是总资产的比例。</p>
+      <p class="muted">平常仓位默认:TQQQ 0 / 底仓 70 / QLD 15 / 现金 15(%)。−30% 以内的比例都是"剩余持仓的比例",不是总资产的比例。−35% 以后底仓和现金已用完,改由外部资金(组合之外的新增现金)继续加仓,每个阈值每轮只触发一次,回补后重新计数;外部资金默认买底仓,可改 TQQQ,不启用则回测只用初始资金。</p>
 
       <h3>举例</h3>
       <p>QQQ 前高 700。跌到 630(−10%)开始第一档;继续跌到 550,已触发前三档,谷底 550。回补线 = 700 + (700 − 550) = <b>850</b>。涨到 850 之前,即使反弹到 800 又回落,也不重复买入已用过的档位,前高仍然是 700。</p>
@@ -155,7 +165,7 @@
         <li>边界敏感:回撤恰好在档位边缘时,复权价的微小噪声也可能让触发日改变,最终值可相差数个百分点。</li>
         <li>未计税、滑点、融资利差差异和交易限制;合成数据偏乐观。</li>
       </ul>
-      <p class="warn">仅为个人研究工具,不构成投资建议。杠杆 ETF 存在每日再平衡损耗,可能出现 −80% 以上回撤。</p>
+      <p class="warn">仅为个人研究工具,不构成投资建议。杠杆 ETF 存在每日再平衡损耗,可能出现 −99% 左右的回撤。</p>
     </main>
   </div>
 </div>

@@ -285,6 +285,11 @@
       timer = setTimeout(() => { if (!$('now').hidden) runNow(); else if (!$('bt').hidden) runBacktest(); }, 300);
     });
     $('nowBtn').onclick = runNow;
+    $('nowResetBtn').onclick = () => {
+      $('nowDyn').checked = true; $('manQ').value = '';
+      ['tq', 'base', 'b2', 'cash'].forEach((k) => { $('a_' + k).value = ''; });
+      runNow();
+    };
     $('resetBtn').onclick = () => { resetDefaults(); };
     ['w_tq', 'w_base', 'w_b2', 'w_cash'].forEach((id) => $(id).addEventListener('input', () => validate(readParams())));
     validate(readParams());

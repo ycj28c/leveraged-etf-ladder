@@ -35,7 +35,7 @@
       r.forEach((v) => {
         const td = document.createElement('td');
         const inp = document.createElement('input');
-        inp.type = 'number'; inp.step = 'any'; inp.value = +(+v).toFixed(4);
+        inp.type = 'number'; inp.step = 'any'; inp.min = 0; inp.max = 100; inp.value = +(+v).toFixed(4);
         td.appendChild(inp); tr.appendChild(td);
       });
       tb.appendChild(tr);
@@ -51,13 +51,14 @@
     return out.sort((a, b) => a.dd - b.dd);
   }
 
-  function addRuleRow(pct = 400, frac = 50, cash = 0) {
+  function addRuleRow(pct = 400, frac = 50, baseShare = 100) {
     const tb = $('ruleTable').querySelector('tbody');
     const tr = document.createElement('tr');
-    [pct, frac, cash].forEach((v) => {
+    [pct, frac, baseShare].forEach((v, k) => {
       const td = document.createElement('td');
       const inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any'; inp.value = v;
+      inp.type = 'number'; inp.step = 'any'; inp.min = 0; inp.value = v;
+      if (k > 0) inp.max = 100;
       td.appendChild(inp); tr.appendChild(td);
     });
     const td = document.createElement('td');
@@ -71,7 +72,7 @@
     const out = [];
     $('ruleTable').querySelectorAll('tbody tr').forEach((tr) => {
       const v = [...tr.querySelectorAll('input')].map((i) => parseFloat(i.value));
-      if (v.every((x) => isFinite(x)) && v[0] > 0) out.push({ pct: v[0] / 100, frac: v[1] / 100, cashShare: v[2] / 100 });
+      if (v.every((x) => isFinite(x) && x >= 0) && v[0] > 0) out.push({ pct: v[0] / 100, frac: Math.min(1, v[1] / 100), baseShare: Math.min(1, v[2] / 100) });
     });
     return out;
   }
@@ -109,6 +110,7 @@
     if (Math.abs(s - 1) > 1e-6) return '平常仓位合计必须为 100%。';
     if (!P.stages.length) return '至少需要一档阶梯。';
     if (!(P.capital > 0)) return '起始资金必须大于 0。';
+    if ([...document.querySelectorAll('#params input[type=number]')].some((i) => parseFloat(i.value) < 0)) return '参数不能为负数。';
     if ($('start').value && $('end').value && $('end').value <= $('start').value) return '结束日期必须晚于起始日期。';
     return null;
   }
@@ -242,7 +244,7 @@
       if (e.type === 'stage') { ev = `−${(e.th * 100).toFixed(0)}% 档`; det = `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`; }
       else if (e.type === 'sell') {
         const nm = e.rule === 'peak' ? 'QQQ 回到前高' : `TQQQ 自低点 +${(e.pct * 100).toFixed(0)}%`;
-        ev = '减仓'; det = `${nm}:卖 TQQQ ${money(e.sold)} → QQQ ${money(e.toQQ)}${e.toCash > 0 ? ` + 现金 ${money(e.toCash)}` : ''}`;
+        ev = '减仓'; det = `${nm}:卖 TQQQ ${money(e.sold)} → ${[e.toBase > 0 ? `底仓 ${money(e.toBase)}` : '', e.toQQ > 0 ? `QQQ ${money(e.toQQ)}` : '', e.toCash > 0 ? `现金 ${money(e.toCash)}` : ''].filter(Boolean).join(' + ')}`;
       }
       else if (e.type === 'rearm') { ev = '重置'; det = `QQQ 创新高 ${e.peak.toFixed(2)},重置前高与档位,持仓不变(回补已关闭)`; }
       else if (e.type === 'recover') { ev = '回补'; det = `到达 ${e.line.toFixed(1)},恢复平常仓位`; }
@@ -328,7 +330,7 @@
       row('规则模拟', w(adv.sim, adv.simTotal)) + (adv.usingActual ? row('实际', w(actual, E.total(actual))) : '') + '</tbody></table></div>';
     h += '<p class="muted">模拟持仓为"从最近前高起按收盘价推演"的结果,与你的真实成交会有偏差(盘中触发、成交价、费用)。仅供参考,不构成投资建议。</p>';
     const recent = adv.events.slice(-8);
-    if (recent.length) h += '<h3>推演中的最近操作</h3><ul>' + recent.map((e) => `<li>${e.date} ${e.type === 'stage' ? `−${(e.th * 100).toFixed(0)}% 档,买入 TQQQ ${money(e.bought)}` : e.type === 'recover' ? '回补' : e.type === 'sell' ? '减仓(TQQQ → QQQ)' : e.type === 'rearm' ? '重置前高(不回补)' : '外部资金'}</li>`).join('') + '</ul>';
+    if (recent.length) h += '<h3>推演中的最近操作</h3><ul>' + recent.map((e) => `<li>${e.date} ${e.type === 'stage' ? `−${(e.th * 100).toFixed(0)}% 档,买入 TQQQ ${money(e.bought)}` : e.type === 'recover' ? '回补' : e.type === 'sell' ? '减仓(卖 TQQQ)' : e.type === 'rearm' ? '重置前高(不回补)' : '外部资金'}</li>`).join('') + '</ul>';
     out.innerHTML = h;
   }
 
@@ -345,8 +347,25 @@
     syncMode(); syncExt();
   }
 
+  // Number boxes never accept negatives (typing '-', pasting, or arrow keys); percent boxes cap at 100.
+  function guardNumbers() {
+    const fix = (i) => {
+      const v = parseFloat(i.value);
+      if (v < 0) i.value = 0;
+      else if (i.max !== '' && v > parseFloat(i.max)) i.value = i.max;
+    };
+    document.querySelectorAll('input[type=number]').forEach((i) => { i.min = 0; });
+    ['sB_frac'].forEach((id) => { $(id).max = 100; });
+    document.addEventListener('keydown', (e) => {
+      if (e.target.matches && e.target.matches('input[type=number]') && (e.key === '-' || e.key === 'e' || e.key === 'E')) e.preventDefault();
+    });
+    document.addEventListener('input', (e) => { if (e.target.matches && e.target.matches('input[type=number]')) fix(e.target); });
+    document.addEventListener('change', (e) => { if (e.target.matches && e.target.matches('input[type=number]')) fix(e.target); }, true);
+  }
+
   function init() {
     resetDefaults();
+    guardNumbers();
     document.querySelectorAll('.tab').forEach((b) => (b.onclick = () => {
       document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === b));
       ['bt', 'now', 'about'].forEach((id) => ($(id).hidden = id !== b.dataset.tab));

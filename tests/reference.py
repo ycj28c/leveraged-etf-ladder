@@ -18,8 +18,8 @@ VOL_D, VOL_P = RAW["series"]["QQQ"]["d"], RAW["series"]["QQQ"]["c"]
 END = "2026-11-17"
 SELLS_MULTI = {
     "tq_rules": [
-        {"pct": 4.0, "frac": 0.5, "cash_share": 0.0},
-        {"pct": 8.0, "frac": 0.5, "cash_share": 0.5},
+        {"pct": 4.0, "frac": 0.5, "base_share": 1.0},
+        {"pct": 8.0, "frac": 0.5, "base_share": 0.5},
     ],
     "peak": {"on": True, "frac": 0.5},
 }
@@ -166,23 +166,23 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None, sells=None, re
             if tq_tr is None or ds["TQ"][i] < tq_tr:
                 tq_tr = ds["TQ"][i]
 
-            def sell(frac, cash_share):
+            def sell(frac, base_share, qq_share):
                 if not v["tq"] > 0:
                     return
                 sold = v["tq"] * frac
-                to_cash = sold * cash_share
                 v["tq"] -= sold
-                v["cash"] += to_cash
-                v["qq"] += sold - to_cash
+                v["base"] += sold * base_share
+                v["cash"] += sold * (1 - base_share - qq_share)
+                v["qq"] += sold * qq_share
 
             for k, rule in enumerate(rules):
                 if not fired_tq[k] and ds["TQ"][i] >= tq_tr * (1 + rule["pct"]):
                     fired_tq[k] = True
-                    sell(rule["frac"], rule.get("cash_share", 0.0))
+                    sell(rule["frac"], rule.get("base_share", 1.0), 0.0)
             s = sells.get("peak")
             if s and s["on"] and not fired_peak and q >= peak:
                 fired_peak = True
-                sell(s["frac"], 0.0)
+                sell(s["frac"], 0.0, 1.0)
             if not recover and q >= peak:
                 inc, stage, peak, trough, ei = False, 0, q, q, 0
                 tq_tr = None
@@ -274,7 +274,7 @@ def main():
         "syn_const50_ext": analyze(
             run(syn, 1e6, cap_fn("const", 0.5), ext={"thr": [0.35, 0.40, 0.45, 0.50], "amt": 0.10, "asset": "base"})
         ),
-        "syn_sells_A": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells={"tq_rules": [{"pct": 4.0, "frac": 0.5, "cash_share": 0.0}]})),
+        "syn_sells_A": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells={"tq_rules": [{"pct": 4.0, "frac": 0.5, "base_share": 1.0}]})),
         "syn_sells_multi": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells=SELLS_MULTI)),
         "syn_norecover": analyze(run(syn, 100.0, cap_fn("const", 0.5), recover=False)),
         "syn_norecover_sells": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells=SELLS_MULTI, recover=False)),

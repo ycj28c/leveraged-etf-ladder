@@ -85,3 +85,20 @@ footer{margin:14px 0 4px;text-align:center}footer a{color:var(--acc)}
 #ruleTable th:last-child,#ruleTable td:last-child{width:26px}
 #ruleTable input{text-align:right}
 #ruleTable button{padding:0 6px;border-color:transparent;color:var(--mut)}
+
+/* compact sidebar */
+aside{padding:0 8px 8px;font-size:11.5px}
+aside details{padding:2px 0}
+aside summary{padding:3px 0;font-size:12px}
+aside .f{gap:4px;padding:1px 0 3px}
+aside .row2,aside .row4,aside .row5{gap:5px}
+aside label{gap:1px;font-size:11px}
+aside input,aside select{padding:1px 4px;height:22px;font-size:11.5px}
+aside input[type=checkbox]{height:auto}
+aside small{font-size:10.5px;line-height:1.3}
+#stageTable th,#stageTable td,#ruleTable th,#ruleTable td{padding:1px 2px}
+#stageTable th,#ruleTable th{font-size:10.5px}
+.actions{margin-top:6px}
+.actions button{padding:4px 10px}
+aside .muted.small{margin:4px 0 0}
+.rulehead{margin-top:2px}

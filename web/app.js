@@ -1,6 +1,8 @@
 /* UI glue. All numbers come from engine.js. Not investment advice. */
 (function () {
   'use strict';
+  // Author credit: put your GitHub username here (leave '' to hide the footer).
+  const AUTHOR_GITHUB = 'ycj28c';
   const E = window.Engine;
   const $ = (id) => document.getElementById(id);
   const num = (id) => parseFloat($(id).value);
@@ -332,6 +334,15 @@
       init();
       runBacktest();
     }).catch((e) => { $('dataInfo').innerHTML = `<span class="neg">加载 data/prices.json 失败(${e.message})。请通过本地 HTTP 服务打开,而不是直接双击 html。</span>`; });
+  }
+  if (AUTHOR_GITHUB) {
+    const f = document.getElementById('author');
+    const link = document.createElement('a');
+    link.href = 'https://github.com/' + encodeURIComponent(AUTHOR_GITHUB);
+    link.textContent = '@' + AUTHOR_GITHUB;
+    link.target = '_blank'; link.rel = 'noopener';
+    f.append('作者:', link, ' · 仅为个人研究工具,不构成投资建议。');
+    f.hidden = false;
   }
   load();
 })();

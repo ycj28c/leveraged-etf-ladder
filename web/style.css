@@ -74,3 +74,5 @@ table.steps th,table.steps td{text-align:center}
 td small{display:block;color:var(--mut);font-size:11px;line-height:1.1}
 table.log td:nth-child(4){text-align:left;white-space:normal;min-width:220px}
 table.log th:nth-child(4){text-align:left}
+
+footer{margin:14px 0 4px;text-align:center}footer a{color:var(--acc)}

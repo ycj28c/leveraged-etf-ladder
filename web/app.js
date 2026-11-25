@@ -221,11 +221,11 @@
     ch += '<div><h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas></div></div>';
 
     let h = `<h2>${dates[0]} → ${dates[n]}(${a.years.toFixed(1)} 年)</h2>` + sec('概览', ov, true) + sec('资产曲线与回撤', ch, true);
-    const ys = E.yearly(a.idx, dates, null), yq = E.yearly(hs.QQQ, dates), y2 = E.yearly(hs.B2, dates), yb = E.yearly(hs.BASE, dates);
-    h += '<details class="sec"><summary>按年度收益</summary><div class="scroll"><table><thead><tr><th>年份</th><th>策略</th><th>策略年内最大回撤</th><th>QQQ</th><th>QLD</th><th>' + baseName + '</th></tr></thead><tbody>';
+    const ys = E.yearly(a.idx, dates, null), yq = E.yearly(hs.QQQ, dates), y2 = E.yearly(hs.B2, dates), yt = E.yearly(hs.TQ, dates), yb = E.yearly(hs.BASE, dates);
+    h += '<details class="sec"><summary>按年度收益</summary><div class="scroll"><table><thead><tr><th>年份</th><th>策略</th><th>策略年内最大回撤</th><th>QQQ</th><th>QLD</th><th>TQQQ</th><th>' + baseName + '</th></tr></thead><tbody>';
     ys.forEach((r, i) => {
       const c = (x) => `<span class="${cls(x)}">${pct(x)}</span>`;
-      h += row(r.year, [c(r.ret), pct(r.mdd), c(yq[i].ret), c(y2[i].ret), c(yb[i].ret)]);
+      h += row(r.year, [c(r.ret), pct(r.mdd), c(yq[i].ret), c(y2[i].ret), c(yt[i].ret), c(yb[i].ret)]);
     });
     h += '</tbody></table></div></details>';
 

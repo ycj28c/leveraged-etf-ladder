@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>杠杆 ETF 阶梯加仓:回测与当前仓位</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>杠杆 ETF 阶梯加仓:回测与当前仓位</h1>
+  <p class="warn">仅为个人研究工具,<b>不构成投资建议</b>。合成数据(1999 起)偏乐观,未计税、滑点、融资差异与交易限制;杠杆 ETF 可能出现 −80% 以上回撤。历史不代表未来。</p>
+  <p id="dataInfo" class="muted">加载数据中…</p>
+</header>
+
+<nav>
+  <button class="tab active" data-tab="bt">回测</button>
+  <button class="tab" data-tab="now">当前仓位与建议</button>
+  <button class="tab" data-tab="about">规则说明</button>
+</nav>
+
+<section id="params">
+  <h2>参数</h2>
+  <div class="grid">
+    <label>数据模式
+      <select id="mode">
+        <option value="synthetic">合成(1999 起,QQQ/SPY + 模拟 QLD/TQQQ)</option>
+        <option value="real">真实 ETF(2016-11 起)</option>
+      </select></label>
+    <label>起始日期 <input id="start" type="date"></label>
+    <label>起始资金 <input id="capital" type="number" value="1000000" min="1"></label>
+    <label>底仓标的
+      <select id="baseSym"><option>VOO</option><option>SPMO</option></select>
+      <small>合成模式固定用 SPY</small></label>
+    <label>现金年化利率(真实模式)<input id="cashYield" type="number" step="0.001" value="0"></label>
+    <label>合成 ETF 年费率 <input id="expense" type="number" step="0.0005" value="0.0095"></label>
+  </div>
+
+  <h3>平常仓位(合计应为 100%)</h3>
+  <div class="grid">
+    <label>TQQQ % <input id="w_tq" type="number" value="0"></label>
+    <label>底仓 % <input id="w_base" type="number" value="70"></label>
+    <label>QLD % <input id="w_b2" type="number" value="15"></label>
+    <label>现金 % <input id="w_cash" type="number" value="15"></label>
+    <span id="wSum" class="muted"></span>
+  </div>
+
+  <h3>阶梯(回撤达到该值时,卖出底仓比例 + 动用现金比例,买入 TQQQ)</h3>
+  <table id="stageTable"><thead><tr><th>回撤 %</th><th>卖底仓 %</th><th>用现金 %</th></tr></thead><tbody></tbody></table>
+
+  <h3>TQQQ 上限(只在买入时检查)</h3>
+  <div class="grid">
+    <label>模式
+      <select id="capMode">
+        <option value="const">固定比例</option>
+        <option value="vol">波动率动态:K ÷ 过去 252 日 QQQ 波动率</option>
+        <option value="none">不设上限</option>
+      </select></label>
+    <label>固定上限 % <input id="capConst" type="number" value="50"></label>
+    <label>K % <input id="capK" type="number" step="0.5" value="11"></label>
+    <label>下限 % <input id="capLo" type="number" value="20"></label>
+    <label>上限 % <input id="capHi" type="number" value="70"></label>
+  </div>
+
+  <h3>外部资金(深度回撤时追加)</h3>
+  <div class="grid">
+    <label><input id="extOn" type="checkbox"> 启用</label>
+    <label>触发回撤 %(逗号分隔)<input id="extThr" value="35,40,45,50"></label>
+    <label>每次追加(占起始资金 %)<input id="extAmt" type="number" value="10"></label>
+    <label>买入标的
+      <select id="extAsset"><option value="base">底仓</option><option value="tq">TQQQ</option></select></label>
+  </div>
+  <button id="runBtn" class="primary">运行回测</button>
+  <button id="resetBtn">恢复默认</button>
+</section>
+
+<main id="bt">
+  <div id="btOut" class="muted">点击"运行回测"。</div>
+</main>
+
+<main id="now" hidden>
+  <h2>当前状态</h2>
+  <p class="muted">使用上方参数与起始日期之后的数据,从该日期按规则推演到最新一天;或手动输入最新价格做 what-if(如盘中价)。</p>
+  <div class="grid">
+    <label><input id="nowDyn" type="checkbox" checked> 以"最近一次前高"为起点(忽略起始日期,按真实前高与回撤档位初始化)</label>
+    <label>假设 QQQ 价格(可选)<input id="manQ" type="number" step="0.01" placeholder="留空=最新收盘"></label>
+  </div>
+  <h3>你的实际持仓(可选,用于对比与测算下一档)</h3>
+  <div class="grid">
+    <label>TQQQ 市值 <input id="a_tq" type="number" value=""></label>
+    <label>底仓市值 <input id="a_base" type="number" value=""></label>
+    <label>QLD 市值 <input id="a_b2" type="number" value=""></label>
+    <label>现金 <input id="a_cash" type="number" value=""></label>
+  </div>
+  <button id="nowBtn" class="primary">计算</button>
+  <div id="nowOut"></div>
+</main>
+
+<main id="about" hidden>
+  <h2>规则说明</h2>
+  <ul>
+    <li>信号:QQQ 收盘价相对<b>冻结前高</b>的回撤。进入加仓状态后前高不再更新。</li>
+    <li>每档:卖出底仓一定比例 + 动用现金一定比例,买入 TQQQ。已触发的档位不重复。</li>
+    <li>TQQQ 上限只在买入时检查:允许买入量 = 上限 × 总资产 − 现有 TQQQ,不足则按比例缩减;上涨后占比超过上限不会强制卖出。</li>
+    <li>回补:QQQ ≥ 前高 + (前高 − 谷底) 时,一次性恢复平常仓位,TQQQ 清零,前高解冻。</li>
+    <li>动态上限:每年初按去年最后一个交易日的 252 日波动率计算 K ÷ vol,并夹在上下限之间。</li>
+    <li>外部资金:回撤达到各阈值时追加,收益指标用时间加权(TWR)与 IRR 分别计算。</li>
+    <li>合成数据:TQQQ = 3×QQQ 日收益 − 2×国债利率 − 费率;QLD = 2× − 1×;底仓 = SPY;现金 = 13 周国债。</li>
+    <li>边界敏感:回撤恰好在档位边缘时,复权价的微小噪声也可能让触发日改变,最终值可相差数个百分点。</li>
+  </ul>
+</main>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

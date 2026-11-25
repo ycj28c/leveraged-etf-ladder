@@ -60,7 +60,7 @@
 
   function validate(P) {
     const s = P.weights.tq + P.weights.base + P.weights.b2 + P.weights.cash;
-    $('wSum').textContent = '合计 ' + (s * 100).toFixed(1) + '%';
+    $('wSum').textContent = '(合计 ' + (s * 100).toFixed(1) + '%)';
     if (Math.abs(s - 1) > 1e-6) return '平常仓位合计必须为 100%。';
     if (!P.stages.length) return '至少需要一档阶梯。';
     if (!(P.capital > 0)) return '起始资金必须大于 0。';
@@ -81,7 +81,8 @@
     let lo = Infinity, hi = -Infinity;
     series.forEach((s) => s.y.forEach((v) => { const t = f(v); if (t < lo) lo = t; if (t > hi) hi = t; }));
     if (opt.zero != null) hi = Math.max(hi, f(opt.zero));
-    const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
+    const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += opt.zero != null ? 0 : pad;
+    if (opt.min != null) lo = opt.min;
     const X = (i) => L + ((W - L - R) * i) / (dates.length - 1);
     const Y = (v) => T + (H - T - B) * (1 - (f(v) - lo) / (hi - lo));
     g.font = '11px sans-serif'; g.fillStyle = fg; g.strokeStyle = line;
@@ -128,7 +129,8 @@
     const S = { QQQ: stat(hs.QQQ), B2: stat(hs.B2), BASE: stat(hs.BASE) };
     const uwTxt = (u) => (u.to ? `${u.days} 交易日` : `${u.days} 交易日(至今未恢复)`);
 
-    let h = `<h2>结果:${dates[0]} → ${dates[n]}(${a.years.toFixed(1)} 年)</h2>`;
+    let h = `<h2>${dates[0]} → ${dates[n]}(${a.years.toFixed(1)} 年)</h2>`;
+    h += `<div class="kv"><div>终值<b>${money(a.finalValue)}</b></div><div>年化 CAGR<b>${pct(a.cagr)}</b></div><div>最大回撤<b class="neg">${pct(a.mdd)}</b></div><div>Sharpe<b>${a.sharpe.toFixed(2)}</b></div>${P.ext ? `<div>IRR / MOIC<b>${pct(a.irr)} / ${a.moic.toFixed(1)}x</b></div>` : ''}</div>`;
     h += '<div class="scroll"><table><thead><tr><th></th><th>阶梯策略</th><th>持有 QQQ</th><th>持有 QLD</th><th>持有 ' + baseName + '</th></tr></thead><tbody>';
     h += row('终值', [money(a.finalValue), money(S.QQQ.final), money(S.B2.final), money(S.BASE.final)]);
     if (P.ext) h += row('累计投入(含外部资金)', [money(a.invested), '-', '-', '-']);
@@ -144,12 +146,12 @@
       { name: '阶梯策略', color: '#2358d6', y: res.values, w: 2 },
       { name: 'QQQ', color: '#e08a00', y: hs.QQQ }, { name: 'QLD', color: '#c0392b', y: hs.B2 }, { name: baseName, color: '#1b8a4b', y: hs.BASE },
     ];
-    h += '<h3>资产曲线(对数坐标' + (P.ext ? ';策略含外部资金' : '') + ')</h3>' + legend(eqSeries) + '<canvas id="cEq"></canvas>';
+    h += '<div class="charts"><div><h3>资产曲线(对数坐标' + (P.ext ? ';策略含外部资金' : '') + ')</h3>' + legend(eqSeries) + '<canvas id="cEq"></canvas></div>';
     const dd = (v) => { let pk = -Infinity; return v.map((x) => { pk = Math.max(pk, x); return x / pk - 1; }); };
     const ddSeries = [
       { name: '阶梯策略', color: '#2358d6', y: dd(a.idx), w: 1.6 }, { name: 'QQQ', color: '#e08a00', y: dd(hs.QQQ) }, { name: 'QLD', color: '#c0392b', y: dd(hs.B2) },
     ];
-    h += '<h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas>';
+    h += '<div><h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas></div></div>';
 
     const ys = E.yearly(a.idx, dates, null), yq = E.yearly(hs.QQQ, dates), y2 = E.yearly(hs.B2, dates), yb = E.yearly(hs.BASE, dates);
     h += '<h3>按年度</h3><div class="scroll"><table><thead><tr><th>年份</th><th>策略</th><th>策略年内最大回撤</th><th>QQQ</th><th>QLD</th><th>' + baseName + '</th></tr></thead><tbody>';
@@ -176,7 +178,7 @@
     out.innerHTML = h;
 
     lineChart($('cEq'), dates, eqSeries, { log: true, fmt: money });
-    lineChart($('cDd'), dates, ddSeries, { log: false, fmt: (v) => pct(v, 0), zero: 0 });
+    lineChart($('cDd'), dates, ddSeries, { log: false, fmt: (v) => pct(v, 0), zero: 0, min: -1 });
     $('rollBtn').onclick = () => {
       $('rollBox').innerHTML = '计算中…';
       setTimeout(() => {
@@ -248,9 +250,14 @@
     document.querySelectorAll('.tab').forEach((b) => (b.onclick = () => {
       document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === b));
       ['bt', 'now', 'about'].forEach((id) => ($(id).hidden = id !== b.dataset.tab));
-      $('params').hidden = b.dataset.tab === 'about';
+      if (b.dataset.tab === 'now') runNow(); else if (b.dataset.tab === 'bt') runBacktest();
     }));
-    $('runBtn').onclick = runBacktest;
+    $('runBtn').onclick = () => { runBacktest(); };
+    let timer = null;
+    $('params').addEventListener('change', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (!$('now').hidden) runNow(); else if (!$('bt').hidden) runBacktest(); }, 300);
+    });
     $('nowBtn').onclick = runNow;
     $('resetBtn').onclick = () => { resetDefaults(); };
     ['w_tq', 'w_base', 'w_b2', 'w_cash'].forEach((id) => $(id).addEventListener('input', () => validate(readParams())));

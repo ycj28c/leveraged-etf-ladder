@@ -216,8 +216,9 @@
       if (inc) {
         if (q < trough) trough = q;
         if (q >= peak + (peak - trough)) {
-          if (!p.noEvents) events.push({ type: 'recover', date, qqq: q, peak, trough, line: peak + (peak - trough), before: Object.assign({}, v), total: tot });
+          const before = Object.assign({}, v);
           v = scale(W, tot); inc = false; stage = 0; trough = q; ei = 0;
+          if (!p.noEvents) events.push({ type: 'recover', date, qqq: q, peak, line: peak + (peak - trough), before, hold: Object.assign({}, v), total: tot });
         }
       }
       const dd = 1 - q / peak;
@@ -227,7 +228,7 @@
           const amt = p.ext.amt * p.capital;
           const asset = p.ext.asset === 'tq' ? 'tq' : 'base';
           v[asset] += amt; contrib += amt; ei++;
-          if (!p.noEvents) events.push({ type: 'ext', date, qqq: q, dd, th: p.ext.thr[ei - 1], amt, asset });
+          if (!p.noEvents) events.push({ type: 'ext', date, qqq: q, dd, th: p.ext.thr[ei - 1], amt, asset, hold: Object.assign({}, v), total: total(v) });
         }
       }
 

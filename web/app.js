@@ -190,11 +190,17 @@
     h += '</details>';
 
     const evs = res.events;
-    h += `<details class="sec"><summary>操作日志(共 ${evs.length} 条${evs.length > 80 ? ',显示最近 80 条' : ''})</summary><div class="scroll"><table><thead><tr><th>日期</th><th>事件</th><th>QQQ</th><th>详情</th></tr></thead><tbody>`;
+    const hc = (e) => {
+      const t = e.total;
+      return ['tq', 'base', 'b2', 'cash'].map((k) => `${money(e.hold[k])}<small>${pct(e.hold[k] / t, 0)}</small>`).concat([`<b>${money(t)}</b>`]);
+    };
+    h += `<details class="sec"><summary>操作日志(共 ${evs.length} 条${evs.length > 80 ? ',显示最近 80 条' : ''})</summary><div class="scroll"><table class="log"><thead><tr><th>日期</th><th>事件</th><th>QQQ</th><th>详情</th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>现金</th><th>总值</th></tr></thead><tbody>`;
     evs.slice(-80).forEach((e) => {
-      if (e.type === 'stage') h += row(e.date, [`−${(e.th * 100).toFixed(0)}% 档`, e.qqq.toFixed(2), `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`]);
-      else if (e.type === 'recover') h += row(e.date, ['回补', e.qqq.toFixed(2), `到达 ${e.line.toFixed(1)},恢复平常仓位,总资产 ${money(e.total)}`]);
-      else h += row(e.date, ['外部资金', e.qqq.toFixed(2), `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? 'TQQQ' : '底仓'}`]);
+      let ev, det;
+      if (e.type === 'stage') { ev = `−${(e.th * 100).toFixed(0)}% 档`; det = `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`; }
+      else if (e.type === 'recover') { ev = '回补'; det = `到达 ${e.line.toFixed(1)},恢复平常仓位`; }
+      else { ev = '外部资金'; det = `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? 'TQQQ' : '底仓'}`; }
+      h += row(e.date, [ev, e.qqq.toFixed(2), det].concat(hc(e)));
     });
     h += '</tbody></table></div></details>';
     h += sec('滚动 5 年窗口分布', '<div id="rollBox" class="muted">展开后自动计算…</div>', false);

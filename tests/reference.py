@@ -16,6 +16,11 @@ RAW = json.loads((ROOT / "data" / "prices.json").read_text())
 S = {k: dict(zip(v["d"], v["c"])) for k, v in RAW["series"].items()}
 VOL_D, VOL_P = RAW["series"]["QQQ"]["d"], RAW["series"]["QQQ"]["c"]
 END = "2026-11-17"
+SELLS_ALL = {
+    "tq400": {"on": True, "pct": 4.0, "frac": 0.5},
+    "peak": {"on": True, "frac": 0.5},
+    "tq800": {"on": True, "pct": 8.0, "frac": 0.5, "cash_share": 0.5},
+}
 
 STAGES = [
     (0.10, 0.10, 0.0, "tq"),
@@ -24,7 +29,7 @@ STAGES = [
     (0.25, 1 / 2, 1 / 2, "tq"),
     (0.30, 1.0, 1.0, "tq"),
 ]
-W0 = {"tq": 0.0, "base": 0.70, "b2": 0.15, "cash": 0.15}
+W0 = {"tq": 0.0, "base": 0.70, "b2": 0.15, "cash": 0.15, "qq": 0.0}
 
 
 def days(a, b):
@@ -109,11 +114,14 @@ def targets(W):
     return out
 
 
-def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None):
+def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None, sells=None):
     i1 = len(ds["dates"]) - 1 if i1 is None else i1
     W = W0
     q0 = ds["QQQ"][i0]
     stage, inc, ei, contrib = 0, False, 0, 0.0
+    sells = sells or {}
+    tq_tr = None
+    fired = {"tq400": False, "peak": False, "tq800": False}
     if dynamic:
         upto = len([d for d in VOL_D if d <= ds["dates"][i0]])
         pk, pk_i = -1e18, 0
@@ -125,6 +133,8 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None):
         stage = sum(1 for s in STAGES if 1 - q0 / peak >= s[0])
         inc = stage > 0
         w = targets(W)[stage]
+        if inc:
+            tq_tr = ds["TQ"][i0]
     else:
         peak = trough = q0
         w = W
@@ -135,6 +145,7 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None):
         v["base"] *= ds["BASE"][i] / ds["BASE"][i - 1]
         v["b2"] *= ds["B2"][i] / ds["B2"][i - 1]
         v["cash"] *= ds["CASH"][i] / ds["CASH"][i - 1]
+        v["qq"] *= ds["QQQ"][i] / ds["QQQ"][i - 1]
         q, tot, d = ds["QQQ"][i], sum(v.values()), ds["dates"][i]
         if not inc and q > peak:
             peak = q
@@ -143,7 +154,32 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None):
             if q >= peak + (peak - trough):
                 v = {k: tot * x for k, x in W.items()}
                 inc, stage, trough, ei = False, 0, q, 0
+                tq_tr = None
+                fired = {"tq400": False, "peak": False, "tq800": False}
                 nev += 1
+        if inc:
+            if tq_tr is None or ds["TQ"][i] < tq_tr:
+                tq_tr = ds["TQ"][i]
+
+            def sell(key, frac, cash_share):
+                fired[key] = True
+                if not v["tq"] > 0:
+                    return
+                sold = v["tq"] * frac
+                to_cash = sold * cash_share
+                v["tq"] -= sold
+                v["cash"] += to_cash
+                v["qq"] += sold - to_cash
+
+            s = sells.get("tq400")
+            if s and s["on"] and not fired["tq400"] and ds["TQ"][i] >= tq_tr * (1 + s["pct"]):
+                sell("tq400", s["frac"], 0.0)
+            s = sells.get("peak")
+            if s and s["on"] and not fired["peak"] and q >= peak:
+                sell("peak", s["frac"], 0.0)
+            s = sells.get("tq800")
+            if s and s["on"] and not fired["tq800"] and ds["TQ"][i] >= tq_tr * (1 + s["pct"]):
+                sell("tq800", s["frac"], s["cash_share"])
         dd = 1 - q / peak
         if ext and inc:
             while ei < len(ext["thr"]) and dd >= ext["thr"][ei]:
@@ -155,6 +191,7 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None):
             _, fb, fc, tgt = STAGES[stage]
             if not inc:
                 inc, trough = True, q
+                tq_tr = ds["TQ"][i]
             moved = v["base"] * fb + v["cash"] * fc
             f = 1.0
             c = cap(d)
@@ -228,6 +265,10 @@ def main():
         "syn_vol11": analyze(run(syn, 100.0, cap_fn("vol", 0.5, 0.11, 0.2, 0.7))),
         "syn_const50_ext": analyze(
             run(syn, 1e6, cap_fn("const", 0.5), ext={"thr": [0.35, 0.40, 0.45, 0.50], "amt": 0.10, "asset": "base"})
+        ),
+        "syn_sells_A": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells={"tq400": {"on": True, "pct": 4.0, "frac": 0.5}})),
+        "syn_sells_ABC": analyze(
+            run(syn, 100.0, cap_fn("const", 0.5), sells=SELLS_ALL)
         ),
         "rolling_syn_const50": rolling(syn, cap_fn("const", 0.5)),
     }

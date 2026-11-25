@@ -70,7 +70,8 @@ table.steps{max-width:460px}
 table.steps th,table.steps td{text-align:center}
 .about ul{padding-left:18px}.about li{margin:4px 0}
 
-.row2,.row4{align-items:end}
+.row5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.row2,.row4,.row5{align-items:end}
 td small{display:block;color:var(--mut);font-size:11px;line-height:1.1}
 table.log td:nth-child(4){text-align:left;white-space:normal;min-width:220px}
 table.log th:nth-child(4){text-align:left}

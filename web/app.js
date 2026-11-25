@@ -12,15 +12,15 @@
   let raw = null;
   function syncMode() {
     const real = $('mode').value === 'real';
-    $('baseSym').disabled = !real; $('cashYield').disabled = !real; $('expense').disabled = real;
+    $('cashYield').disabled = !real; $('expense').disabled = real;
     $('modeHint').textContent = real
       ? '真实模式:用真实 ETF 价格;现金按左侧"现金年化"计息;"合成年费率"不生效。'
-      : '合成模式:底仓 = SPY,现金 = 13 周国债收益率;"底仓标的""现金年化"不生效。';
+      : '合成模式:底仓选 QQQ 则用 QQQ,选 VOO/SPMO 则用 SPY 代替;现金 = 13 周国债收益率;"现金年化"不生效。';
   }
   function syncExt() { $('extCap').disabled = $('extAsset').value !== 'tq'; }
   const cashNote = () => ($('mode').value === 'real'
     ? `现金按年化 ${(num('cashYield') * 100).toFixed(2)}% 计息,底仓 ${$('baseSym').value}`
-    : '现金按 13 周国债收益率计息,底仓 SPY;QLD/TQQQ 为合成');
+    : `现金按 13 周国债收益率计息,底仓 ${$('baseSym').value === 'QQQ' ? 'QQQ' : 'SPY(代替 VOO/SPMO)'};QLD/TQQQ 为合成`);
   const openState = {};
   const secKey = (d) => d.querySelector('summary').textContent.split('(')[0].trim();
   const sec = (title, body, open) => `<details class="sec"${open ? ' open' : ''}><summary>${title}</summary>${body}</details>`;
@@ -58,6 +58,11 @@
       capMode: $('capMode').value, capConst: num('capConst') / 100,
       capK: num('capK') / 100, capLo: num('capLo') / 100, capHi: num('capHi') / 100,
       ext: null,
+      sells: {
+        tq400: { on: $('sA').checked, pct: num('sA_pct') / 100, frac: num('sA_frac') / 100 },
+        peak: { on: $('sB').checked, frac: num('sB_frac') / 100 },
+        tq800: { on: $('sC').checked, pct: num('sC_pct') / 100, frac: num('sC_frac') / 100, cashShare: num('sC_cash') / 100 },
+      },
     };
     if ($('extOn').checked) {
       const thr = $('extThr').value.split(',').map((s) => parseFloat(s) / 100).filter((x) => isFinite(x)).sort((a, b) => a - b);
@@ -73,7 +78,7 @@
     if ($('mode').value === 'real') {
       return E.buildReal(raw, { base: $('baseSym').value, start: start || '2016-11-22', end, cashYield: isFinite(num('cashYield')) ? num('cashYield') : 0 });
     }
-    return E.buildSynthetic(raw, { start, end, expense: num('expense') });
+    return E.buildSynthetic(raw, { start, end, base: $('baseSym').value, expense: num('expense') });
   }
 
   function validate(P) {
@@ -207,12 +212,16 @@
     const evs = res.events;
     const hc = (e) => {
       const t = e.total;
-      return ['tq', 'base', 'b2', 'cash'].map((k) => `${money(e.hold[k])}<small>${pct(e.hold[k] / t, 0)}</small>`).concat([`<b>${money(t)}</b>`]);
+      return ['tq', 'base', 'b2', 'qq', 'cash'].map((k) => `${money(e.hold[k] || 0)}<small>${pct((e.hold[k] || 0) / t, 0)}</small>`).concat([`<b>${money(t)}</b>`]);
     };
-    h += `<details class="sec"><summary>操作日志(共 ${evs.length} 条${evs.length > 80 ? ',显示最近 80 条' : ''})</summary><div class="scroll"><table class="log"><thead><tr><th>日期</th><th>事件</th><th>QQQ</th><th>详情</th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>现金</th><th>总值</th></tr></thead><tbody>`;
+    h += `<details class="sec"><summary>操作日志(共 ${evs.length} 条${evs.length > 80 ? ',显示最近 80 条' : ''})</summary><div class="scroll"><table class="log"><thead><tr><th>日期</th><th>事件</th><th>QQQ</th><th>详情</th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>QQQ 持仓</th><th>现金</th><th>总值</th></tr></thead><tbody>`;
     evs.slice(-80).forEach((e) => {
       let ev, det;
       if (e.type === 'stage') { ev = `−${(e.th * 100).toFixed(0)}% 档`; det = `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`; }
+      else if (e.type === 'sell') {
+        const nm = { tq400: `A:TQQQ 自低点 +${(P.sells.tq400.pct * 100).toFixed(0)}%`, peak: 'B:QQQ 回到前高', tq800: `C:TQQQ 自低点 +${(P.sells.tq800.pct * 100).toFixed(0)}%` }[e.rule];
+        ev = '减仓'; det = `${nm}:卖 TQQQ ${money(e.sold)} → QQQ ${money(e.toQQ)}${e.toCash > 0 ? ` + 现金 ${money(e.toCash)}` : ''}`;
+      }
       else if (e.type === 'recover') { ev = '回补'; det = `到达 ${e.line.toFixed(1)},恢复平常仓位`; }
       else { ev = '外部资金'; det = `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? (e.toBase > 0 ? `TQQQ ${money(e.toTq)} + 底仓 ${money(e.toBase)}(受上限约束)` : 'TQQQ') : '底仓'}`; }
       h += row(e.date, [ev, e.qqq.toFixed(2), det].concat(hc(e)));
@@ -277,7 +286,7 @@
       if (pi === 0 || ds.dates[pi] < ds.dates[0]) P2.dynamicStart = true;
       P2.startIndex = pi;
     }
-    const actual = ['tq', 'base', 'b2', 'cash'].reduce((o, k) => { o[k] = parseFloat($('a_' + k).value) || 0; return o; }, {});
+    const actual = ['tq', 'base', 'b2', 'qq', 'cash'].reduce((o, k) => { o[k] = parseFloat($('a_' + k).value) || 0; return o; }, {});
     const curVol = E.trailingVol(ds.vol, ds.vol.dates.length - 1, 252);
     const adv = E.advise(ds, P2, E.total(actual) > 0 ? actual : null);
     const s = adv.state;
@@ -291,12 +300,12 @@
     h += '<h3>建议</h3><ul class="advice">' + adv.lines.map((l) => `<li>${l}</li>`).join('') + '</ul>';
     h += '<h3>各档触发价</h3><div class="scroll"><table><thead><tr><th>回撤</th><th>QQQ 触发价</th><th>距现价</th><th>状态</th></tr></thead><tbody>' +
       adv.triggers.map((t) => row(`−${(t.dd * 100).toFixed(0)}%`, [t.price.toFixed(2), pct(t.away), t.done ? '已触发' : '未触发'])).join('') + '</tbody></table></div>';
-    const w = (o, t) => ['tq', 'base', 'b2', 'cash'].map((k) => `${money(o[k])}(${pct(o[k] / t)})`).concat([`<b>${money(t)}</b>(100%)`]);
-    h += `<h3>${adv.usingActual ? '规则模拟持仓 vs 你的实际持仓' : '规则模拟持仓'}(按 ${$('capital').value} 起始资金推演)</h3><div class="scroll"><table><thead><tr><th></th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>现金</th><th>合计</th></tr></thead><tbody>` +
+    const w = (o, t) => ['tq', 'base', 'b2', 'qq', 'cash'].map((k) => `${money(o[k] || 0)}(${pct((o[k] || 0) / t)})`).concat([`<b>${money(t)}</b>(100%)`]);
+    h += `<h3>${adv.usingActual ? '规则模拟持仓 vs 你的实际持仓' : '规则模拟持仓'}(按 ${$('capital').value} 起始资金推演)</h3><div class="scroll"><table><thead><tr><th></th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>QQQ 持仓</th><th>现金</th><th>合计</th></tr></thead><tbody>` +
       row('规则模拟', w(adv.sim, adv.simTotal)) + (adv.usingActual ? row('实际', w(actual, E.total(actual))) : '') + '</tbody></table></div>';
     h += '<p class="muted">模拟持仓为"从最近前高起按收盘价推演"的结果,与你的真实成交会有偏差(盘中触发、成交价、费用)。仅供参考,不构成投资建议。</p>';
     const recent = adv.events.slice(-8);
-    if (recent.length) h += '<h3>推演中的最近操作</h3><ul>' + recent.map((e) => `<li>${e.date} ${e.type === 'stage' ? `−${(e.th * 100).toFixed(0)}% 档,买入 TQQQ ${money(e.bought)}` : e.type === 'recover' ? '回补' : '外部资金'}</li>`).join('') + '</ul>';
+    if (recent.length) h += '<h3>推演中的最近操作</h3><ul>' + recent.map((e) => `<li>${e.date} ${e.type === 'stage' ? `−${(e.th * 100).toFixed(0)}% 档,买入 TQQQ ${money(e.bought)}` : e.type === 'recover' ? '回补' : e.type === 'sell' ? '减仓(TQQQ → QQQ)' : '外部资金'}</li>`).join('') + '</ul>';
     out.innerHTML = h;
   }
 
@@ -306,6 +315,8 @@
     $('cashYield').value = 0.02; $('expense').value = 0.0095;
     $('w_tq').value = 0; $('w_base').value = 70; $('w_b2').value = 15; $('w_cash').value = 15;
     $('capMode').value = 'const'; $('capConst').value = 50; $('capK').value = 11; $('capLo').value = 20; $('capHi').value = 70;
+    $('sA').checked = $('sB').checked = $('sC').checked = false;
+    $('sA_pct').value = 400; $('sA_frac').value = 50; $('sB_frac').value = 50; $('sC_pct').value = 800; $('sC_frac').value = 50; $('sC_cash').value = 50;
     $('extOn').checked = false; $('extCap').checked = true; $('extThr').value = '35,40,45,50,55,60,65,70,75,80,85'; $('extAmt').value = 10; $('extAsset').value = 'base';
     buildStageTable(DEFAULT_STAGE_ROWS);
     syncMode(); syncExt();
@@ -328,7 +339,7 @@
     $('nowBtn').onclick = runNow;
     $('nowResetBtn').onclick = () => {
       $('nowDyn').checked = true; $('manQ').value = '';
-      ['tq', 'base', 'b2', 'cash'].forEach((k) => { $('a_' + k).value = ''; });
+      ['tq', 'base', 'b2', 'qq', 'cash'].forEach((k) => { $('a_' + k).value = ''; });
       runNow();
     };
     $('resetBtn').onclick = () => { resetDefaults(); };

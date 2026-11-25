@@ -16,10 +16,12 @@ RAW = json.loads((ROOT / "data" / "prices.json").read_text())
 S = {k: dict(zip(v["d"], v["c"])) for k, v in RAW["series"].items()}
 VOL_D, VOL_P = RAW["series"]["QQQ"]["d"], RAW["series"]["QQQ"]["c"]
 END = "2026-11-17"
-SELLS_ALL = {
-    "tq400": {"on": True, "pct": 4.0, "frac": 0.5},
+SELLS_MULTI = {
+    "tq_rules": [
+        {"pct": 4.0, "frac": 0.5, "cash_share": 0.0},
+        {"pct": 8.0, "frac": 0.5, "cash_share": 0.5},
+    ],
     "peak": {"on": True, "frac": 0.5},
-    "tq800": {"on": True, "pct": 8.0, "frac": 0.5, "cash_share": 0.5},
 }
 
 STAGES = [
@@ -114,14 +116,16 @@ def targets(W):
     return out
 
 
-def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None, sells=None):
+def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None, sells=None, recover=True):
     i1 = len(ds["dates"]) - 1 if i1 is None else i1
     W = W0
     q0 = ds["QQQ"][i0]
     stage, inc, ei, contrib = 0, False, 0, 0.0
     sells = sells or {}
+    rules = sells.get("tq_rules", [])
+    fired_tq = [False] * len(rules)
+    fired_peak = False
     tq_tr = None
-    fired = {"tq400": False, "peak": False, "tq800": False}
     if dynamic:
         upto = len([d for d in VOL_D if d <= ds["dates"][i0]])
         pk, pk_i = -1e18, 0
@@ -151,18 +155,18 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None, sells=None):
             peak = q
         if inc:
             trough = min(trough, q)
-            if q >= peak + (peak - trough):
+            if recover and q >= peak + (peak - trough):
                 v = {k: tot * x for k, x in W.items()}
                 inc, stage, trough, ei = False, 0, q, 0
                 tq_tr = None
-                fired = {"tq400": False, "peak": False, "tq800": False}
+                fired_tq = [False] * len(rules)
+                fired_peak = False
                 nev += 1
         if inc:
             if tq_tr is None or ds["TQ"][i] < tq_tr:
                 tq_tr = ds["TQ"][i]
 
-            def sell(key, frac, cash_share):
-                fired[key] = True
+            def sell(frac, cash_share):
                 if not v["tq"] > 0:
                     return
                 sold = v["tq"] * frac
@@ -171,15 +175,19 @@ def run(ds, capital, cap, i0=0, i1=None, dynamic=False, ext=None, sells=None):
                 v["cash"] += to_cash
                 v["qq"] += sold - to_cash
 
-            s = sells.get("tq400")
-            if s and s["on"] and not fired["tq400"] and ds["TQ"][i] >= tq_tr * (1 + s["pct"]):
-                sell("tq400", s["frac"], 0.0)
+            for k, rule in enumerate(rules):
+                if not fired_tq[k] and ds["TQ"][i] >= tq_tr * (1 + rule["pct"]):
+                    fired_tq[k] = True
+                    sell(rule["frac"], rule.get("cash_share", 0.0))
             s = sells.get("peak")
-            if s and s["on"] and not fired["peak"] and q >= peak:
-                sell("peak", s["frac"], 0.0)
-            s = sells.get("tq800")
-            if s and s["on"] and not fired["tq800"] and ds["TQ"][i] >= tq_tr * (1 + s["pct"]):
-                sell("tq800", s["frac"], s["cash_share"])
+            if s and s["on"] and not fired_peak and q >= peak:
+                fired_peak = True
+                sell(s["frac"], 0.0)
+            if not recover and q >= peak:
+                inc, stage, peak, trough, ei = False, 0, q, q, 0
+                tq_tr = None
+                fired_tq = [False] * len(rules)
+                fired_peak = False
         dd = 1 - q / peak
         if ext and inc:
             while ei < len(ext["thr"]) and dd >= ext["thr"][ei]:
@@ -266,10 +274,10 @@ def main():
         "syn_const50_ext": analyze(
             run(syn, 1e6, cap_fn("const", 0.5), ext={"thr": [0.35, 0.40, 0.45, 0.50], "amt": 0.10, "asset": "base"})
         ),
-        "syn_sells_A": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells={"tq400": {"on": True, "pct": 4.0, "frac": 0.5}})),
-        "syn_sells_ABC": analyze(
-            run(syn, 100.0, cap_fn("const", 0.5), sells=SELLS_ALL)
-        ),
+        "syn_sells_A": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells={"tq_rules": [{"pct": 4.0, "frac": 0.5, "cash_share": 0.0}]})),
+        "syn_sells_multi": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells=SELLS_MULTI)),
+        "syn_norecover": analyze(run(syn, 100.0, cap_fn("const", 0.5), recover=False)),
+        "syn_norecover_sells": analyze(run(syn, 100.0, cap_fn("const", 0.5), sells=SELLS_MULTI, recover=False)),
         "rolling_syn_const50": rolling(syn, cap_fn("const", 0.5)),
     }
     path = ROOT / "tests" / "reference.json"

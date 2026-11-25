@@ -59,10 +59,12 @@ function cmp(name, a, r, rel) {
 cmp('syn const50', E.analyze(E.run(syn, { capital: 100, capMode: 'const', capConst: 0.5 })), ref.syn_const50, 1e-6);
 cmp('syn vol11', E.analyze(E.run(syn, { capital: 100, capMode: 'vol', capK: 0.11, capLo: 0.2, capHi: 0.7 })), ref.syn_vol11, 1e-6);
 cmp('syn ext', E.analyze(E.run(syn, { capital: 1e6, capMode: 'const', capConst: 0.5, ext: { thr: [0.35, 0.40, 0.45, 0.50], amt: 0.10, asset: 'base' } })), ref.syn_const50_ext, 1e-6);
-const SA = { tq400: { on: true, pct: 4, frac: 0.5 } };
-const SABC = { tq400: { on: true, pct: 4, frac: 0.5 }, peak: { on: true, frac: 0.5 }, tq800: { on: true, pct: 8, frac: 0.5, cashShare: 0.5 } };
-cmp('syn sell A', E.analyze(E.run(syn, { capital: 100, capMode: 'const', capConst: 0.5, sells: SA })), ref.syn_sells_A, 1e-6);
-cmp('syn sell A+B+C', E.analyze(E.run(syn, { capital: 100, capMode: 'const', capConst: 0.5, sells: SABC })), ref.syn_sells_ABC, 1e-6);
+const SMULTI = { tqRules: [{ pct: 4, frac: 0.5, cashShare: 0 }, { pct: 8, frac: 0.5, cashShare: 0.5 }], peak: { on: true, frac: 0.5 } };
+const base50 = { capital: 100, capMode: 'const', capConst: 0.5 };
+cmp('syn sell A', E.analyze(E.run(syn, { ...base50, sells: { tqRules: [{ pct: 4, frac: 0.5, cashShare: 0 }] } })), ref.syn_sells_A, 1e-6);
+cmp('syn sells multi', E.analyze(E.run(syn, { ...base50, sells: SMULTI })), ref.syn_sells_multi, 1e-6);
+cmp('syn no-recover', E.analyze(E.run(syn, { ...base50, recover: false })), ref.syn_norecover, 1e-6);
+cmp('syn no-recover + sells', E.analyze(E.run(syn, { ...base50, sells: SMULTI, recover: false })), ref.syn_norecover_sells, 1e-6);
 {
   const r = E.rolling(syn, { capital: 1, capMode: 'const', capConst: 0.5 }, { years: 5, step: 20 });
   const q = ref.rolling_syn_const50;

@@ -154,27 +154,28 @@
     h += '<div><h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas></div></div>';
 
     const ys = E.yearly(a.idx, dates, null), yq = E.yearly(hs.QQQ, dates), y2 = E.yearly(hs.B2, dates), yb = E.yearly(hs.BASE, dates);
-    h += '<h3>按年度</h3><div class="scroll"><table><thead><tr><th>年份</th><th>策略</th><th>策略年内最大回撤</th><th>QQQ</th><th>QLD</th><th>' + baseName + '</th></tr></thead><tbody>';
+    h += '<details class="sec"><summary>按年度收益</summary><div class="scroll"><table><thead><tr><th>年份</th><th>策略</th><th>策略年内最大回撤</th><th>QQQ</th><th>QLD</th><th>' + baseName + '</th></tr></thead><tbody>';
     ys.forEach((r, i) => {
       const c = (x) => `<span class="${cls(x)}">${pct(x)}</span>`;
       h += row(r.year, [c(r.ret), pct(r.mdd), c(yq[i].ret), c(y2[i].ret), c(yb[i].ret)]);
     });
-    h += '</tbody></table></div>';
+    h += '</tbody></table></div></details>';
 
     const eps = E.episodes(a.idx, dates, 0.2);
-    h += '<h3>策略回撤 ≥20% 的区间</h3>';
+    h += '<details class="sec"><summary>策略回撤 ≥20% 的区间</summary>';
     h += eps.length ? '<div class="scroll"><table><thead><tr><th>前高</th><th>谷底</th><th>深度</th><th>恢复日</th></tr></thead><tbody>' +
       eps.map((e) => row(e.peak, [e.trough, pct(-e.depth), e.recovered || '未恢复'])).join('') + '</tbody></table></div>' : '<p class="muted">无</p>';
+    h += '</details>';
 
     const evs = res.events;
-    h += `<h3>操作日志(共 ${evs.length} 条${evs.length > 80 ? ',显示最近 80 条' : ''})</h3><div class="scroll"><table><thead><tr><th>日期</th><th>事件</th><th>QQQ</th><th>详情</th></tr></thead><tbody>`;
+    h += `<details class="sec"><summary>操作日志(共 ${evs.length} 条${evs.length > 80 ? ',显示最近 80 条' : ''})</summary><div class="scroll"><table><thead><tr><th>日期</th><th>事件</th><th>QQQ</th><th>详情</th></tr></thead><tbody>`;
     evs.slice(-80).forEach((e) => {
       if (e.type === 'stage') h += row(e.date, [`−${(e.th * 100).toFixed(0)}% 档`, e.qqq.toFixed(2), `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`]);
       else if (e.type === 'recover') h += row(e.date, ['回补', e.qqq.toFixed(2), `到达 ${e.line.toFixed(1)},恢复平常仓位,总资产 ${money(e.total)}`]);
       else h += row(e.date, ['外部资金', e.qqq.toFixed(2), `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? 'TQQQ' : '底仓'}`]);
     });
-    h += '</tbody></table></div>';
-    h += '<div id="rollBox"><button id="rollBtn">计算滚动 5 年窗口分布(约几秒)</button></div>';
+    h += '</tbody></table></div></details>';
+    h += '<details class="sec"><summary>滚动 5 年窗口分布</summary><div id="rollBox"><button id="rollBtn">计算(约几秒)</button></div></details>';
     out.innerHTML = h;
 
     lineChart($('cEq'), dates, eqSeries, { log: true, fmt: money });

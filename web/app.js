@@ -58,7 +58,7 @@
     };
     if ($('extOn').checked) {
       const thr = $('extThr').value.split(',').map((s) => parseFloat(s) / 100).filter((x) => isFinite(x)).sort((a, b) => a - b);
-      P.ext = { thr, amt: num('extAmt') / 100, asset: $('extAsset').value };
+      P.ext = { thr, amt: num('extAmt') / 100, asset: $('extAsset').value, capped: $('extCap').checked };
     }
     return P;
   }
@@ -199,7 +199,7 @@
       let ev, det;
       if (e.type === 'stage') { ev = `−${(e.th * 100).toFixed(0)}% 档`; det = `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`; }
       else if (e.type === 'recover') { ev = '回补'; det = `到达 ${e.line.toFixed(1)},恢复平常仓位`; }
-      else { ev = '外部资金'; det = `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? 'TQQQ' : '底仓'}`; }
+      else { ev = '外部资金'; det = `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? (e.toBase > 0 ? `TQQQ ${money(e.toTq)} + 底仓 ${money(e.toBase)}(受上限约束)` : 'TQQQ') : '底仓'}`; }
       h += row(e.date, [ev, e.qqq.toFixed(2), det].concat(hc(e)));
     });
     h += '</tbody></table></div></details>';
@@ -291,7 +291,7 @@
     $('cashYield').value = 0.02; $('expense').value = 0.0095;
     $('w_tq').value = 0; $('w_base').value = 70; $('w_b2').value = 15; $('w_cash').value = 15;
     $('capMode').value = 'const'; $('capConst').value = 50; $('capK').value = 11; $('capLo').value = 20; $('capHi').value = 70;
-    $('extOn').checked = false; $('extThr').value = '35,40,45,50'; $('extAmt').value = 10; $('extAsset').value = 'base';
+    $('extOn').checked = false; $('extCap').checked = true; $('extThr').value = '35,40,45,50,55,60,65,70,75,80,85'; $('extAmt').value = 10; $('extAsset').value = 'base';
     buildStageTable(DEFAULT_STAGE_ROWS);
     syncMode();
   }

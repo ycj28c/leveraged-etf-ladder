@@ -30,7 +30,7 @@
     capLo: 0.2,
     capHi: 0.7,
     volWindow: 252,
-    ext: null, // { thr:[0.35,...], amt:0.10 (fraction of initial capital), asset:'base'|'tq' }
+    ext: null, // { thr:[0.35,...], amt:0.10 (fraction of initial capital), asset:'base'|'tq', capped:bool (tq buys obey the TQQQ cap; excess buys core) }
     dynamicStart: false,
     noEvents: false,
   };
@@ -227,8 +227,16 @@
         while (ei < p.ext.thr.length && dd >= p.ext.thr[ei]) {
           const amt = p.ext.amt * p.capital;
           const asset = p.ext.asset === 'tq' ? 'tq' : 'base';
-          v[asset] += amt; contrib += amt; ei++;
-          if (!p.noEvents) events.push({ type: 'ext', date, qqq: q, dd, th: p.ext.thr[ei - 1], amt, asset, hold: Object.assign({}, v), total: total(v) });
+          let toTq = 0;
+          if (asset === 'tq') {
+            if (p.ext.capped) {
+              // same rule as the ladder: allowed = cap x (total after the new money) - current TQQQ; the rest buys core
+              const capV = capFn(date);
+              toTq = isFinite(capV) ? Math.min(amt, Math.max(0, capV * (total(v) + amt) - v.tq)) : amt;
+            } else toTq = amt;
+          }
+          v.tq += toTq; v.base += amt - toTq; contrib += amt; ei++;
+          if (!p.noEvents) events.push({ type: 'ext', date, qqq: q, dd, th: p.ext.thr[ei - 1], amt, asset, toTq, toBase: amt - toTq, hold: Object.assign({}, v), total: total(v) });
         }
       }
 

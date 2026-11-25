@@ -17,6 +17,7 @@
       ? '真实模式:用真实 ETF 价格;现金按左侧"现金年化"计息;"合成年费率"不生效。'
       : '合成模式:底仓 = SPY,现金 = 13 周国债收益率;"底仓标的""现金年化"不生效。';
   }
+  function syncExt() { $('extCap').disabled = $('extAsset').value !== 'tq'; }
   const cashNote = () => ($('mode').value === 'real'
     ? `现金按年化 ${(num('cashYield') * 100).toFixed(2)}% 计息,底仓 ${$('baseSym').value}`
     : '现金按 13 周国债收益率计息,底仓 SPY;QLD/TQQQ 为合成');
@@ -139,10 +140,10 @@
     const a = E.analyze(res);
     const n = res.values.length - 1, dates = res.dates;
     const hold = (k) => E.holdSeries(ds, k, P.capital, 0, n);
-    const hs = { QQQ: hold('QQQ'), B2: hold('B2'), BASE: hold('BASE') };
+    const hs = { QQQ: hold('QQQ'), B2: hold('B2'), TQ: hold('TQ'), BASE: hold('BASE') };
     const baseName = ds.baseName;
     const stat = (v) => { const s = E.perfStats(v, dates); return { ...s, final: v[n], uw: E.longestUnderwater(v, dates) }; };
-    const S = { QQQ: stat(hs.QQQ), B2: stat(hs.B2), BASE: stat(hs.BASE) };
+    const S = { QQQ: stat(hs.QQQ), B2: stat(hs.B2), TQ: stat(hs.TQ), BASE: stat(hs.BASE) };
     const uwTxt = (u) => (u.to ? `${u.days} 交易日` : `${u.days} 交易日(至今未恢复)`);
 
     const extEv = res.events.filter((e) => e.type === 'ext');
@@ -150,29 +151,38 @@
     let qpk = -Infinity, qdd = 0;
     for (let i = 0; i <= n; i++) { qpk = Math.max(qpk, ds.QQQ[i]); qdd = Math.max(qdd, 1 - ds.QQQ[i] / qpk); }
     let ov = `<p class="muted small">${cashNote()}。</p>`;
-    if (P.ext) ov += extEv.length
-      ? `<p class="muted small">外部资金已启用:共触发 ${extEv.length} 笔,合计 ${money(extSum)}(起始资金的 ${(extSum / P.capital * 100).toFixed(0)}%),详见操作日志。</p>`
-      : `<p class="warn">已启用外部资金,但该区间内 QQQ 最大回撤只有 ${(qdd * 100).toFixed(1)}%,未达到触发阈值 ${(P.ext.thr[0] * 100).toFixed(0)}%,所以没有追加。可把起始日期改早(如合成模式 1999 年),或调低触发回撤。</p>`;
+    if (P.ext && extEv.length) {
+      const diverted = extEv.filter((e) => e.toBase > 0), divSum = diverted.reduce((t, e) => t + e.toBase, 0);
+      const maxShare = Math.max(...extEv.map((e) => e.hold.tq / e.total));
+      let capTxt;
+      if (P.ext.asset !== 'tq') capTxt = '买入标的是底仓,"受 TQQQ 上限约束"不适用(要买 TQQQ 请把买入标的改成 TQQQ)。';
+      else if (!P.ext.capped) capTxt = '买 TQQQ,未勾选受上限约束,整笔买入。';
+      else if (diverted.length) capTxt = `买 TQQQ 且受上限约束:其中 ${diverted.length} 笔触到上限,共 ${money(divSum)} 转买底仓。`;
+      else capTxt = `买 TQQQ 且受上限约束:但每笔买入后 TQQQ 占比最高仅 ${(maxShare * 100).toFixed(1)}%,始终低于上限,所以约束没有触发(与不勾选结果相同)。`;
+      ov += `<p class="muted small">外部资金已启用:共触发 ${extEv.length} 笔,合计 ${money(extSum)}(起始资金的 ${(extSum / P.capital * 100).toFixed(0)}%),详见操作日志。${capTxt}</p>`;
+    } else if (P.ext) {
+      ov += `<p class="warn">已启用外部资金,但该区间内 QQQ 最大回撤只有 ${(qdd * 100).toFixed(1)}%,未达到触发阈值 ${(P.ext.thr[0] * 100).toFixed(0)}%,所以没有追加。可把起始日期改早(如合成模式 1999 年),或调低触发回撤。</p>`;
+    }
     ov += `<div class="kv"><div>终值<b>${money(a.finalValue)}</b></div><div>年化 CAGR<b>${pct(a.cagr)}</b></div><div>最大回撤<b class="neg">${pct(a.mdd)}</b></div><div>Sharpe<b>${a.sharpe.toFixed(2)}</b></div>${P.ext ? `<div>IRR / MOIC<b>${pct(a.irr)} / ${a.moic.toFixed(1)}x</b></div><div>外部资金<b>${extEv.length} 笔 / ${money(extSum)}</b></div>` : ''}</div>`;
-    ov += '<div class="scroll"><table><thead><tr><th></th><th>阶梯策略</th><th>持有 QQQ</th><th>持有 QLD</th><th>持有 ' + baseName + '</th></tr></thead><tbody>';
-    ov += row('终值', [money(a.finalValue), money(S.QQQ.final), money(S.B2.final), money(S.BASE.final)]);
-    if (P.ext) ov += row('累计投入(含外部资金)', [money(a.invested), '-', '-', '-']);
-    ov += row('年化 CAGR' + (P.ext ? '(时间加权)' : ''), [pct(a.cagr), pct(S.QQQ.cagr), pct(S.B2.cagr), pct(S.BASE.cagr)]);
-    if (P.ext) ov += row('IRR / MOIC', [`${pct(a.irr)} / ${a.moic.toFixed(1)}x`, '-', '-', '-']);
-    ov += row('年化波动', [pct(a.vol), pct(S.QQQ.vol), pct(S.B2.vol), pct(S.BASE.vol)]);
-    ov += row('Sharpe(rf=0)', [a.sharpe.toFixed(2), S.QQQ.sharpe.toFixed(2), S.B2.sharpe.toFixed(2), S.BASE.sharpe.toFixed(2)]);
-    ov += row('最大回撤', [`${pct(a.mdd)} (${a.mddDate})`, `${pct(S.QQQ.mdd)} (${S.QQQ.mddDate})`, `${pct(S.B2.mdd)} (${S.B2.mddDate})`, `${pct(S.BASE.mdd)} (${S.BASE.mddDate})`]);
-    ov += row('最长回到前高时间', [uwTxt(a.underwater), uwTxt(S.QQQ.uw), uwTxt(S.B2.uw), uwTxt(S.BASE.uw)]);
+    ov += '<div class="scroll"><table><thead><tr><th></th><th>阶梯策略</th><th>持有 QQQ</th><th>持有 QLD</th><th>持有 TQQQ</th><th>持有 ' + baseName + '</th></tr></thead><tbody>';
+    ov += row('终值', [money(a.finalValue), money(S.QQQ.final), money(S.B2.final), money(S.TQ.final), money(S.BASE.final)]);
+    if (P.ext) ov += row('累计投入(含外部资金)', [money(a.invested), '-', '-', '-', '-']);
+    ov += row('年化 CAGR' + (P.ext ? '(时间加权)' : ''), [pct(a.cagr), pct(S.QQQ.cagr), pct(S.B2.cagr), pct(S.TQ.cagr), pct(S.BASE.cagr)]);
+    if (P.ext) ov += row('IRR / MOIC', [`${pct(a.irr)} / ${a.moic.toFixed(1)}x`, '-', '-', '-', '-']);
+    ov += row('年化波动', [pct(a.vol), pct(S.QQQ.vol), pct(S.B2.vol), pct(S.TQ.vol), pct(S.BASE.vol)]);
+    ov += row('Sharpe(rf=0)', [a.sharpe.toFixed(2), S.QQQ.sharpe.toFixed(2), S.B2.sharpe.toFixed(2), S.TQ.sharpe.toFixed(2), S.BASE.sharpe.toFixed(2)]);
+    ov += row('最大回撤', [`${pct(a.mdd)} (${a.mddDate})`, `${pct(S.QQQ.mdd)} (${S.QQQ.mddDate})`, `${pct(S.B2.mdd)} (${S.B2.mddDate})`, `${pct(S.TQ.mdd)} (${S.TQ.mddDate})`, `${pct(S.BASE.mdd)} (${S.BASE.mddDate})`]);
+    ov += row('最长回到前高时间', [uwTxt(a.underwater), uwTxt(S.QQQ.uw), uwTxt(S.B2.uw), uwTxt(S.TQ.uw), uwTxt(S.BASE.uw)]);
     ov += '</tbody></table></div>';
 
     const eqSeries = [
       { name: '阶梯策略', color: '#2358d6', y: res.values, w: 2 },
-      { name: 'QQQ', color: '#e08a00', y: hs.QQQ }, { name: 'QLD', color: '#c0392b', y: hs.B2 }, { name: baseName, color: '#1b8a4b', y: hs.BASE },
+      { name: 'QQQ', color: '#e08a00', y: hs.QQQ }, { name: 'QLD', color: '#c0392b', y: hs.B2 }, { name: 'TQQQ', color: '#8e44ad', y: hs.TQ }, { name: baseName, color: '#1b8a4b', y: hs.BASE },
     ];
     let ch = '<div class="charts"><div><h3>资产曲线(对数坐标' + (P.ext ? ';策略含外部资金' : '') + ')</h3>' + legend(eqSeries) + '<canvas id="cEq"></canvas></div>';
     const dd = (v) => { let pk = -Infinity; return v.map((x) => { pk = Math.max(pk, x); return x / pk - 1; }); };
     const ddSeries = [
-      { name: '阶梯策略', color: '#2358d6', y: dd(a.idx), w: 1.6 }, { name: 'QQQ', color: '#e08a00', y: dd(hs.QQQ) }, { name: 'QLD', color: '#c0392b', y: dd(hs.B2) },
+      { name: '阶梯策略', color: '#2358d6', y: dd(a.idx), w: 1.6 }, { name: 'QQQ', color: '#e08a00', y: dd(hs.QQQ) }, { name: 'QLD', color: '#c0392b', y: dd(hs.B2) }, { name: 'TQQQ', color: '#8e44ad', y: dd(hs.TQ) },
     ];
     ch += '<div><h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas></div></div>';
 
@@ -295,7 +305,7 @@
     $('capMode').value = 'const'; $('capConst').value = 50; $('capK').value = 11; $('capLo').value = 20; $('capHi').value = 70;
     $('extOn').checked = false; $('extCap').checked = true; $('extThr').value = '35,40,45,50,55,60,65,70,75,80,85'; $('extAmt').value = 10; $('extAsset').value = 'base';
     buildStageTable(DEFAULT_STAGE_ROWS);
-    syncMode();
+    syncMode(); syncExt();
   }
 
   function init() {
@@ -305,6 +315,7 @@
       ['bt', 'now', 'about'].forEach((id) => ($(id).hidden = id !== b.dataset.tab));
       if (b.dataset.tab === 'now') runNow(); else if (b.dataset.tab === 'bt') runBacktest();
     }));
+    $('extAsset').addEventListener('change', syncExt);
     $('runBtn').onclick = () => { runBacktest(); };
     let timer = null;
     $('params').addEventListener('change', () => {

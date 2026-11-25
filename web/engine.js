@@ -8,8 +8,8 @@
 
   const DAY = 86400000;
   const dayDiff = (a, b) => (Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / DAY;
-  const total = (o) => o.tq + o.base + o.b2 + o.cash + (o.qq || 0);
-  const scale = (w, k) => ({ tq: w.tq * k, base: w.base * k, b2: w.b2 * k, cash: w.cash * k, qq: (w.qq || 0) * k });
+  const total = (o) => o.tq + o.base + o.b2 + o.cash;
+  const scale = (w, k) => ({ tq: w.tq * k, base: w.base * k, b2: w.b2 * k, cash: w.cash * k });
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
   const DEFAULT_STAGES = [
@@ -26,8 +26,7 @@
     // Optional de-risking while in the add-on state; each rule fires at most once per cycle.
     //   tqRules: list of { pct, frac, baseShare }: TQQQ price >= its low since the cycle began x (1+pct)
     //            -> sell `frac` of the current TQQQ position; `baseShare` of the proceeds buys the core, the rest goes to cash
-    //   peak:    { on, frac }: QQQ >= frozen prior high -> sell `frac` of TQQQ into QQQ
-    sells: null, // { tqRules:[{pct:4,frac:.5,baseShare:1}], peak:{on:true,frac:.5} }  (peak rule buys QQQ)
+    sells: null, // { tqRules:[{pct:4,frac:.5,baseShare:1}] }
     // Recovery: QQQ >= peak + (peak - trough) -> restore base weights. When false, nothing is rebalanced;
     // the cycle just re-arms (peak/stage reset, holdings kept) once QQQ makes a new high above the frozen peak.
     recover: true,
@@ -177,7 +176,7 @@
       const m = v.base * st.fb + v.cash * st.fc;
       v.base *= 1 - st.fb; v.cash *= 1 - st.fc; v[st.tgt] += m;
       const s = total(v);
-      out.push({ tq: v.tq / s, base: v.base / s, b2: v.b2 / s, cash: v.cash / s, qq: (v.qq || 0) / s });
+      out.push({ tq: v.tq / s, base: v.base / s, b2: v.b2 / s, cash: v.cash / s });
     }
     return out;
   }
@@ -194,7 +193,6 @@
     let peak, trough, stage = 0, inc = false, ei = 0, contrib = 0;
     let tqTr = null;
     const SL = p.sells || {}, TR = SL.tqRules || [], firedTq = TR.map(() => false);
-    let firedPeak = false;
     const q0 = ds.QQQ[i0];
     let v;
     if (p.dynamicStart && ds.vol) {
@@ -223,7 +221,6 @@
       v.base *= ds.BASE[i] / ds.BASE[i - 1];
       v.b2 *= ds.B2[i] / ds.B2[i - 1];
       v.cash *= ds.CASH[i] / ds.CASH[i - 1];
-      v.qq = (v.qq || 0) * (ds.QQQ[i] / ds.QQQ[i - 1]);
       const q = ds.QQQ[i], tot = total(v), date = ds.dates[i];
 
       if (!inc && q > peak) peak = q;
@@ -231,30 +228,25 @@
         if (q < trough) trough = q;
         if (p.recover !== false && q >= peak + (peak - trough)) {
           const before = Object.assign({}, v);
-          v = scale(W, tot); inc = false; stage = 0; trough = q; ei = 0; tqTr = null; firedTq.fill(false); firedPeak = false;
+          v = scale(W, tot); inc = false; stage = 0; trough = q; ei = 0; tqTr = null; firedTq.fill(false);
           if (!p.noEvents) events.push({ type: 'recover', date, qqq: q, peak, line: peak + (peak - trough), before, hold: Object.assign({}, v), total: tot });
         }
       }
       if (inc) {
         if (tqTr === null || ds.TQ[i] < tqTr) tqTr = ds.TQ[i];
-        const sell = (frac, parts, meta) => {
-          if (!(v.tq > 0)) return;
-          const sold = v.tq * frac, toBase = sold * parts.base, toCash = sold * parts.cash, toQQ = sold * parts.qq;
-          v.tq -= sold; v.base += toBase; v.cash += toCash; v.qq = (v.qq || 0) + toQQ;
-          if (!p.noEvents) events.push(Object.assign({ type: 'sell', date, qqq: q, sold, toBase, toCash, toQQ, hold: Object.assign({}, v), total: total(v) }, meta));
-        };
         TR.forEach((r, k) => {
-          if (!firedTq[k] && ds.TQ[i] >= tqTr * (1 + r.pct)) {
-            firedTq[k] = true;
-            const b = clamp(r.baseShare == null ? 1 : r.baseShare, 0, 1);
-            sell(clamp(r.frac, 0, 1), { base: b, cash: 1 - b, qq: 0 }, { rule: 'tq', idx: k, pct: r.pct });
-          }
+          if (firedTq[k] || ds.TQ[i] < tqTr * (1 + r.pct)) return;
+          firedTq[k] = true;
+          if (!(v.tq > 0)) return;
+          const b = clamp(r.baseShare == null ? 1 : r.baseShare, 0, 1);
+          const sold = v.tq * clamp(r.frac, 0, 1), toBase = sold * b, toCash = sold - toBase;
+          v.tq -= sold; v.base += toBase; v.cash += toCash;
+          if (!p.noEvents) events.push({ type: 'sell', rule: 'tq', idx: k, pct: r.pct, date, qqq: q, sold, toBase, toCash, hold: Object.assign({}, v), total: total(v) });
         });
-        if (SL.peak && SL.peak.on && !firedPeak && q >= peak) { firedPeak = true; sell(clamp(SL.peak.frac, 0, 1), { base: 0, cash: 0, qq: 1 }, { rule: 'peak' }); }
         if (p.recover === false && q >= peak) {
           // no recovery: re-arm the ladder on a new high, keep holdings as they are
           if (!p.noEvents) events.push({ type: 'rearm', date, qqq: q, peak, hold: Object.assign({}, v), total: total(v) });
-          inc = false; stage = 0; peak = q; trough = q; ei = 0; tqTr = null; firedTq.fill(false); firedPeak = false;
+          inc = false; stage = 0; peak = q; trough = q; ei = 0; tqTr = null; firedTq.fill(false);
         }
       }
       const dd = 1 - q / peak;
@@ -292,7 +284,7 @@
     }
     return {
       dates: ds.dates.slice(i0, i1 + 1), values, contribs, events,
-      final: { holdings: v, stage, inc, peak, trough, tqTrough: tqTr, tqNow: ds.TQ[i1], firedTq: firedTq.slice(), firedPeak, extDone: ei, qqq: ds.QQQ[i1], date: ds.dates[i1], cap: capFn(ds.dates[i1]) },
+      final: { holdings: v, stage, inc, peak, trough, tqTrough: tqTr, tqNow: ds.TQ[i1], firedTq: firedTq.slice(), extDone: ei, qqq: ds.QQQ[i1], date: ds.dates[i1], cap: capFn(ds.dates[i1]) },
       params: p,
     };
   }
@@ -435,7 +427,7 @@
     const stages = p.stages;
     const done = f.stage;
     const sim = f.holdings, simTotal = total(sim);
-    const pct = (o, t) => ({ tq: o.tq / t, base: o.base / t, b2: o.b2 / t, cash: o.cash / t, qq: (o.qq || 0) / t });
+    const pct = (o, t) => ({ tq: o.tq / t, base: o.base / t, b2: o.b2 / t, cash: o.cash / t });
     const lines = [];
     const out = { state: { qqq: q, peak, trough: f.trough, dd, stage: done, inRecovery: f.inc, cap: f.cap, date: f.date }, sim, simTotal, events: res.events };
     out.recoveryLine = f.inc && p.recover !== false ? peak + (peak - f.trough) : null;
@@ -477,7 +469,6 @@
         const bs = r.baseShare == null ? 1 : r.baseShare;
         lines.push(`减仓规则 ${k + 1}:TQQQ 自本轮低点已涨 ${(gain * 100).toFixed(0)}%,涨到 +${(r.pct * 100).toFixed(0)}% 时卖出当前 ${(r.frac * 100).toFixed(0)}% 的 TQQQ,其中 ${(bs * 100).toFixed(0)}% 换底仓${bs < 1 ? `、其余 ${((1 - bs) * 100).toFixed(0)}% 换现金` : ''}${f.firedTq[k] ? '(已执行)' : ''}。`);
       });
-      if (SL.peak && SL.peak.on) lines.push(`减仓规则(回前高):QQQ ${q.toFixed(2)},回到前高 ${peak.toFixed(2)}(还差 ${((peak / q - 1) * 100).toFixed(1)}%)时卖出 ${(SL.peak.frac * 100).toFixed(0)}% TQQQ 换成 QQQ${f.firedPeak ? '(已执行)' : ''}。`);
     }
     if (isFinite(f.cap)) {
       const tqShare = hold.tq / holdTotal;
@@ -485,7 +476,7 @@
     }
     if (useActual) {
       const a = out.compare.actWeights, s = out.compare.simWeights;
-      const diffs = [['TQQQ', 'tq'], ['底仓', 'base'], ['QLD', 'b2'], ['QQQ', 'qq'], ['现金', 'cash']]
+      const diffs = [['TQQQ', 'tq'], ['底仓', 'base'], ['QLD', 'b2'], ['现金', 'cash']]
         .map(([n, k]) => ({ n, d: a[k] - s[k] })).filter((x) => Math.abs(x.d) >= 0.03);
       lines.push(diffs.length
         ? '与规则模拟持仓相比,偏差 ≥3 个百分点:' + diffs.map((x) => `${x.n} ${x.d > 0 ? '+' : ''}${(x.d * 100).toFixed(1)}pp`).join(',') + '。'

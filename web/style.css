@@ -99,3 +99,5 @@ aside small{font-size:11px;line-height:1.35}
 #stageTable th,#stageTable td,#ruleTable th,#ruleTable td{padding:1px 2px}
 .actions{margin-top:8px}
 aside .muted.small{margin:4px 0 0}
+
+#ruleTable.off{opacity:.45}

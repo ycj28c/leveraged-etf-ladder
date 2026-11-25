@@ -82,8 +82,7 @@
       <div class="f">
         <label class="inline"><input id="recOn" type="checkbox" checked> QQQ 从底部涨一个跌幅 → 回补</label>
         <small class="muted">QQQ ≥ 前高 + (前高 − 谷底) 时,全部恢复平常仓位。关闭后不再整体回补:QQQ 创新高时只重置前高与档位,现有持仓(TQQQ、QQQ 等)原样保留。</small>
-        <label class="inline"><input id="sB" type="checkbox"> QQQ 回到前高 → 卖出全部 TQQQ 换 QQQ</label>
-        <div class="rulehead"><b>TQQQ 自低点上涨时减仓</b><button id="addRule" type="button">+ 添加规则</button></div>
+        <div class="rulehead"><label class="inline"><input id="sOn" type="checkbox"> <b>TQQQ 自低点上涨时减仓</b></label><button id="addRule" type="button">+ 添加规则</button></div>
         <table id="ruleTable"><thead><tr><th>涨幅 %</th><th>卖出 TQQQ %</th><th>换底仓 %</th><th></th></tr></thead><tbody></tbody></table>
         <small class="muted">每条规则每轮只触发一次。"低点"= 本轮加仓以来 TQQQ 的最低价。"卖出 TQQQ %"是卖出<b>当前</b> TQQQ 持仓的比例;"换底仓 %"(默认 100)是卖出所得换成底仓的比例,其余自动换成现金。数值不能为负。</small>
       </div>
@@ -125,11 +124,10 @@
       <div class="f nowform">
         <label class="inline"><input id="nowDyn" type="checkbox" checked> 以最近一次前高为起点(忽略起始日期)</label>
         <label>假设 QQQ 价格(可选,如盘中价)<input id="manQ" type="number" step="0.01" placeholder="留空=最新收盘"></label>
-        <div class="row5">
+        <div class="row4">
           <label>实际 TQQQ 市值 <input id="a_tq" type="number"></label>
           <label>实际底仓市值 <input id="a_base" type="number"></label>
           <label>实际 QLD 市值 <input id="a_b2" type="number"></label>
-          <label>实际 QQQ 市值 <input id="a_qq" type="number"></label>
           <label>实际现金 <input id="a_cash" type="number"></label>
         </div>
         <div class="actions"><button id="nowBtn" class="primary">计算</button><button id="nowResetBtn">恢复默认</button><span class="muted small">持仓可不填,不填则按规则模拟持仓。</span></div>
@@ -174,13 +172,12 @@
       </table>
       <p class="muted">平常仓位默认:TQQQ 0 / 底仓 70 / QLD 15 / 现金 15(%)。−30% 以内的比例都是"剩余持仓的比例",不是总资产的比例。−35% 以后底仓和现金已用完,改由外部资金(组合之外的新增现金)继续加仓,每个阈值每轮只触发一次,回补后重新计数;外部资金默认买底仓,可改 TQQQ(可选是否受 TQQQ 上限约束,超出部分买底仓),不启用则回测只用初始资金。</p>
 
-      <h3>回补与 TQQQ 减仓(独立选项)</h3>
-      <p>回补要等 QQQ 涨到"前高 + 已跌幅度",深熊(如 2000 年)可能要等很多年。下面几项相互独立,可任意组合:</p>
+      <h3>回补与 TQQQ 减仓</h3>
+      <p>回补要等 QQQ 涨到"前高 + 已跌幅度",深熊(如 2000 年)可能要等很多年。下面两项相互独立,可任意组合:</p>
       <ul>
-        <li><b>QQQ 从底部涨一个跌幅 → 回补</b>(<b>默认开启</b>):QQQ ≥ 前高 + (前高 − 谷底) 时,全部恢复平常仓位,QQQ 持仓一并换回,各减仓规则重新计数。<b>关闭后</b>不再整体回补;QQQ 创新高时只重置前高与档位,现有持仓原样保留(日志里显示"重置")。</li>
-        <li><b>QQQ 回到前高 → 卖出全部 TQQQ 换 QQQ</b>(默认关闭):QQQ 回到冻结前高时,把当前全部 TQQQ 卖出,换成 QQQ。</li>
-        <li><b>TQQQ 自低点上涨时减仓</b>(规则列表,点"+ 添加规则"可添加多条,默认没有):每条设置涨幅、卖出<b>当前</b> TQQQ 持仓的比例、卖出所得换成<b>底仓</b>的比例(默认 100%,其余自动换成现金)。例如"涨 400%,卖 50%,换底仓 100%"、"涨 800%,卖 50%,换底仓 50%(另一半进现金)"。数值不能为负。</li>
-        <li>"低点"指本轮加仓以来 TQQQ 的最低价;每条规则每轮最多触发一次;减仓后不会因再次下跌重新买回 TQQQ。"回到前高"那条换来的 QQQ 作为单独的持仓记录(日志和持仓表里的"QQQ 持仓"列)。</li>
+        <li><b>QQQ 从底部涨一个跌幅 → 回补</b>(<b>默认开启</b>):QQQ ≥ 前高 + (前高 − 谷底) 时,全部恢复平常仓位,各减仓规则重新计数。<b>关闭后</b>不再整体回补;QQQ 创新高时只重置前高与档位,现有持仓原样保留(日志里显示"重置")。</li>
+        <li><b>TQQQ 自低点上涨时减仓</b>(默认关闭,勾选后生效;规则列表,点"+ 添加规则"可添加多条,默认预填两条:涨 400% 卖 50% 换底仓 100%;涨 800% 卖 50% 换底仓 50%):每条设置涨幅、卖出<b>当前</b> TQQQ 持仓的比例、卖出所得换成<b>底仓</b>的比例(默认 100%,其余自动换成现金)。例如"涨 400%,卖 50%,换底仓 100%"、"涨 800%,卖 50%,换底仓 50%(另一半进现金)"。数值不能为负。</li>
+        <li>"低点"指本轮加仓以来 TQQQ 的最低价;每条规则每轮最多触发一次;减仓后不会因再次下跌重新买回 TQQQ。</li>
       </ul>
 
       <h3>外部资金买 TQQQ 时的上限规则</h3>

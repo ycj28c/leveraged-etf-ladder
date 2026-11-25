@@ -51,6 +51,31 @@
     return out.sort((a, b) => a.dd - b.dd);
   }
 
+  function addRuleRow(pct = 400, frac = 50, cash = 0) {
+    const tb = $('ruleTable').querySelector('tbody');
+    const tr = document.createElement('tr');
+    [pct, frac, cash].forEach((v) => {
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.step = 'any'; inp.value = v;
+      td.appendChild(inp); tr.appendChild(td);
+    });
+    const td = document.createElement('td');
+    const del = document.createElement('button');
+    del.type = 'button'; del.textContent = '✕'; del.title = '删除';
+    del.onclick = () => { tr.remove(); $('params').dispatchEvent(new Event('change')); };
+    td.appendChild(del); tr.appendChild(td); tb.appendChild(tr);
+  }
+
+  function readRules() {
+    const out = [];
+    $('ruleTable').querySelectorAll('tbody tr').forEach((tr) => {
+      const v = [...tr.querySelectorAll('input')].map((i) => parseFloat(i.value));
+      if (v.every((x) => isFinite(x)) && v[0] > 0) out.push({ pct: v[0] / 100, frac: v[1] / 100, cashShare: v[2] / 100 });
+    });
+    return out;
+  }
+
   function readParams() {
     const w = { tq: num('w_tq') / 100, base: num('w_base') / 100, b2: num('w_b2') / 100, cash: num('w_cash') / 100 };
     const P = {
@@ -58,11 +83,8 @@
       capMode: $('capMode').value, capConst: num('capConst') / 100,
       capK: num('capK') / 100, capLo: num('capLo') / 100, capHi: num('capHi') / 100,
       ext: null,
-      sells: {
-        tq400: { on: $('sA').checked, pct: num('sA_pct') / 100, frac: num('sA_frac') / 100 },
-        peak: { on: $('sB').checked, frac: num('sB_frac') / 100 },
-        tq800: { on: $('sC').checked, pct: num('sC_pct') / 100, frac: num('sC_frac') / 100, cashShare: num('sC_cash') / 100 },
-      },
+      sells: { tqRules: readRules(), peak: { on: $('sB').checked, frac: num('sB_frac') / 100 } },
+      recover: $('recOn').checked,
     };
     if ($('extOn').checked) {
       const thr = $('extThr').value.split(',').map((s) => parseFloat(s) / 100).filter((x) => isFinite(x)).sort((a, b) => a - b);
@@ -219,9 +241,10 @@
       let ev, det;
       if (e.type === 'stage') { ev = `−${(e.th * 100).toFixed(0)}% 档`; det = `卖底仓 ${money(e.sellBase)} + 现金 ${money(e.useCash)} → 买 TQQQ ${money(e.bought)}${e.frac < 1 ? `(上限 ${isFinite(e.cap) ? (e.cap * 100).toFixed(0) : '-'}%,仅执行 ${(e.frac * 100).toFixed(0)}%)` : ''}`; }
       else if (e.type === 'sell') {
-        const nm = { tq400: `A:TQQQ 自低点 +${(P.sells.tq400.pct * 100).toFixed(0)}%`, peak: 'B:QQQ 回到前高', tq800: `C:TQQQ 自低点 +${(P.sells.tq800.pct * 100).toFixed(0)}%` }[e.rule];
+        const nm = e.rule === 'peak' ? 'QQQ 回到前高' : `TQQQ 自低点 +${(e.pct * 100).toFixed(0)}%`;
         ev = '减仓'; det = `${nm}:卖 TQQQ ${money(e.sold)} → QQQ ${money(e.toQQ)}${e.toCash > 0 ? ` + 现金 ${money(e.toCash)}` : ''}`;
       }
+      else if (e.type === 'rearm') { ev = '重置'; det = `QQQ 创新高 ${e.peak.toFixed(2)},重置前高与档位,持仓不变(回补已关闭)`; }
       else if (e.type === 'recover') { ev = '回补'; det = `到达 ${e.line.toFixed(1)},恢复平常仓位`; }
       else { ev = '外部资金'; det = `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? (e.toBase > 0 ? `TQQQ ${money(e.toTq)} + 底仓 ${money(e.toBase)}(受上限约束)` : 'TQQQ') : '底仓'}`; }
       h += row(e.date, [ev, e.qqq.toFixed(2), det].concat(hc(e)));
@@ -305,7 +328,7 @@
       row('规则模拟', w(adv.sim, adv.simTotal)) + (adv.usingActual ? row('实际', w(actual, E.total(actual))) : '') + '</tbody></table></div>';
     h += '<p class="muted">模拟持仓为"从最近前高起按收盘价推演"的结果,与你的真实成交会有偏差(盘中触发、成交价、费用)。仅供参考,不构成投资建议。</p>';
     const recent = adv.events.slice(-8);
-    if (recent.length) h += '<h3>推演中的最近操作</h3><ul>' + recent.map((e) => `<li>${e.date} ${e.type === 'stage' ? `−${(e.th * 100).toFixed(0)}% 档,买入 TQQQ ${money(e.bought)}` : e.type === 'recover' ? '回补' : e.type === 'sell' ? '减仓(TQQQ → QQQ)' : '外部资金'}</li>`).join('') + '</ul>';
+    if (recent.length) h += '<h3>推演中的最近操作</h3><ul>' + recent.map((e) => `<li>${e.date} ${e.type === 'stage' ? `−${(e.th * 100).toFixed(0)}% 档,买入 TQQQ ${money(e.bought)}` : e.type === 'recover' ? '回补' : e.type === 'sell' ? '减仓(TQQQ → QQQ)' : e.type === 'rearm' ? '重置前高(不回补)' : '外部资金'}</li>`).join('') + '</ul>';
     out.innerHTML = h;
   }
 
@@ -315,8 +338,8 @@
     $('cashYield').value = 0.02; $('expense').value = 0.0095;
     $('w_tq').value = 0; $('w_base').value = 70; $('w_b2').value = 15; $('w_cash').value = 15;
     $('capMode').value = 'const'; $('capConst').value = 50; $('capK').value = 11; $('capLo').value = 20; $('capHi').value = 70;
-    $('sA').checked = $('sB').checked = $('sC').checked = false;
-    $('sA_pct').value = 400; $('sA_frac').value = 50; $('sB_frac').value = 50; $('sC_pct').value = 800; $('sC_frac').value = 50; $('sC_cash').value = 50;
+    $('recOn').checked = true; $('sB').checked = false; $('sB_frac').value = 50;
+    $('ruleTable').querySelector('tbody').innerHTML = '';
     $('extOn').checked = false; $('extCap').checked = true; $('extThr').value = '35,40,45,50,55,60,65,70,75,80,85'; $('extAmt').value = 10; $('extAsset').value = 'base';
     buildStageTable(DEFAULT_STAGE_ROWS);
     syncMode(); syncExt();
@@ -330,6 +353,7 @@
       if (b.dataset.tab === 'now') runNow(); else if (b.dataset.tab === 'bt') runBacktest();
     }));
     $('extAsset').addEventListener('change', syncExt);
+    $('addRule').onclick = () => { addRuleRow(); $('params').dispatchEvent(new Event('change')); };
     $('runBtn').onclick = () => { runBacktest(); };
     let timer = null;
     $('params').addEventListener('change', () => {

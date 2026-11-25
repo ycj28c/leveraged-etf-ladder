@@ -23,11 +23,14 @@
   const DEFAULT_PARAMS = {
     capital: 1000000,
     weights: { tq: 0, base: 0.70, b2: 0.15, cash: 0.15 },
-    // Partial de-risking of TQQQ while in the add-on state (each fires at most once per cycle; the recovery rule always applies):
-    //   tq400: TQQQ price >= its low since the cycle began x (1+pct)  -> sell `frac` of TQQQ into QQQ
-    //   peak:  QQQ >= frozen prior high                                -> sell `frac` of TQQQ into QQQ
-    //   tq800: like tq400 with a bigger pct                            -> sell `frac` of TQQQ, `cashShare` of proceeds to cash, rest to QQQ
-    sells: null, // { tq400:{on,pct:4,frac:.5}, peak:{on,frac:.5}, tq800:{on,pct:8,frac:.5,cashShare:.5} }
+    // Optional de-risking while in the add-on state; each rule fires at most once per cycle.
+    //   tqRules: list of { pct, frac, cashShare }: TQQQ price >= its low since the cycle began x (1+pct)
+    //            -> sell `frac` of TQQQ; `cashShare` of the proceeds goes to cash, the rest buys QQQ
+    //   peak:    { on, frac }: QQQ >= frozen prior high -> sell `frac` of TQQQ into QQQ
+    sells: null, // { tqRules:[{pct:4,frac:.5,cashShare:0}], peak:{on:true,frac:.5} }
+    // Recovery: QQQ >= peak + (peak - trough) -> restore base weights. When false, nothing is rebalanced;
+    // the cycle just re-arms (peak/stage reset, holdings kept) once QQQ makes a new high above the frozen peak.
+    recover: true,
     stages: DEFAULT_STAGES,
     capMode: 'const', // 'none' | 'const' | 'vol'
     capConst: 0.5,
@@ -189,8 +192,9 @@
     const capFn = makeCapFn(ds, p);
 
     let peak, trough, stage = 0, inc = false, ei = 0, contrib = 0;
-    let tqTr = null; const fired = { tq400: false, peak: false, tq800: false };
-    const SL = p.sells || {};
+    let tqTr = null;
+    const SL = p.sells || {}, TR = SL.tqRules || [], firedTq = TR.map(() => false);
+    let firedPeak = false;
     const q0 = ds.QQQ[i0];
     let v;
     if (p.dynamicStart && ds.vol) {
@@ -225,24 +229,29 @@
       if (!inc && q > peak) peak = q;
       if (inc) {
         if (q < trough) trough = q;
-        if (q >= peak + (peak - trough)) {
+        if (p.recover !== false && q >= peak + (peak - trough)) {
           const before = Object.assign({}, v);
-          v = scale(W, tot); inc = false; stage = 0; trough = q; ei = 0; tqTr = null; fired.tq400 = fired.peak = fired.tq800 = false;
+          v = scale(W, tot); inc = false; stage = 0; trough = q; ei = 0; tqTr = null; firedTq.fill(false); firedPeak = false;
           if (!p.noEvents) events.push({ type: 'recover', date, qqq: q, peak, line: peak + (peak - trough), before, hold: Object.assign({}, v), total: tot });
         }
       }
       if (inc) {
         if (tqTr === null || ds.TQ[i] < tqTr) tqTr = ds.TQ[i];
-        const sell = (key, frac, cashShare) => {
-          fired[key] = true;
+        const sell = (frac, cashShare, meta) => {
           if (!(v.tq > 0)) return;
           const sold = v.tq * frac, toCash = sold * cashShare;
           v.tq -= sold; v.cash += toCash; v.qq = (v.qq || 0) + (sold - toCash);
-          if (!p.noEvents) events.push({ type: 'sell', rule: key, date, qqq: q, sold, toCash, toQQ: sold - toCash, hold: Object.assign({}, v), total: total(v) });
+          if (!p.noEvents) events.push(Object.assign({ type: 'sell', date, qqq: q, sold, toCash, toQQ: sold - toCash, hold: Object.assign({}, v), total: total(v) }, meta));
         };
-        if (SL.tq400 && SL.tq400.on && !fired.tq400 && ds.TQ[i] >= tqTr * (1 + SL.tq400.pct)) sell('tq400', SL.tq400.frac, 0);
-        if (SL.peak && SL.peak.on && !fired.peak && q >= peak) sell('peak', SL.peak.frac, 0);
-        if (SL.tq800 && SL.tq800.on && !fired.tq800 && ds.TQ[i] >= tqTr * (1 + SL.tq800.pct)) sell('tq800', SL.tq800.frac, SL.tq800.cashShare);
+        TR.forEach((r, k) => {
+          if (!firedTq[k] && ds.TQ[i] >= tqTr * (1 + r.pct)) { firedTq[k] = true; sell(r.frac, r.cashShare || 0, { rule: 'tq', idx: k, pct: r.pct }); }
+        });
+        if (SL.peak && SL.peak.on && !firedPeak && q >= peak) { firedPeak = true; sell(SL.peak.frac, 0, { rule: 'peak' }); }
+        if (p.recover === false && q >= peak) {
+          // no recovery: re-arm the ladder on a new high, keep holdings as they are
+          if (!p.noEvents) events.push({ type: 'rearm', date, qqq: q, peak, hold: Object.assign({}, v), total: total(v) });
+          inc = false; stage = 0; peak = q; trough = q; ei = 0; tqTr = null; firedTq.fill(false); firedPeak = false;
+        }
       }
       const dd = 1 - q / peak;
 
@@ -279,7 +288,7 @@
     }
     return {
       dates: ds.dates.slice(i0, i1 + 1), values, contribs, events,
-      final: { holdings: v, stage, inc, peak, trough, tqTrough: tqTr, tqNow: ds.TQ[i1], fired: Object.assign({}, fired), extDone: ei, qqq: ds.QQQ[i1], date: ds.dates[i1], cap: capFn(ds.dates[i1]) },
+      final: { holdings: v, stage, inc, peak, trough, tqTrough: tqTr, tqNow: ds.TQ[i1], firedTq: firedTq.slice(), firedPeak, extDone: ei, qqq: ds.QQQ[i1], date: ds.dates[i1], cap: capFn(ds.dates[i1]) },
       params: p,
     };
   }
@@ -425,7 +434,7 @@
     const pct = (o, t) => ({ tq: o.tq / t, base: o.base / t, b2: o.b2 / t, cash: o.cash / t, qq: (o.qq || 0) / t });
     const lines = [];
     const out = { state: { qqq: q, peak, trough: f.trough, dd, stage: done, inRecovery: f.inc, cap: f.cap, date: f.date }, sim, simTotal, events: res.events };
-    out.recoveryLine = f.inc ? peak + (peak - f.trough) : null;
+    out.recoveryLine = f.inc && p.recover !== false ? peak + (peak - f.trough) : null;
     out.triggers = stages.map((s, k) => ({ dd: s.dd, price: peak * (1 - s.dd), done: k < done, away: q / (peak * (1 - s.dd)) - 1 }));
 
     // working holdings: actual if provided, else simulated
@@ -438,7 +447,9 @@
       lines.push(`QQQ 距前高 ${(dd * 100).toFixed(1)}%,未进入加仓状态:保持平常仓位 TQQQ ${(W.tq * 100).toFixed(0)}% / 底仓 ${(W.base * 100).toFixed(0)}% / QLD ${(W.b2 * 100).toFixed(0)}% / 现金 ${(W.cash * 100).toFixed(0)}%。第一档触发价 ${(peak * (1 - stages[0].dd)).toFixed(2)}。`);
     } else {
       lines.push(`QQQ ${q.toFixed(2)},冻结前高 ${peak.toFixed(2)},回撤 ${(dd * 100).toFixed(1)}%,已触发到 -${stages[Math.max(0, done - 1)] ? (stages[done - 1].dd * 100).toFixed(0) : 0}% 档(共 ${done} 档)。`);
-      lines.push(`回补线 ${out.recoveryLine.toFixed(1)}(= 前高 + (前高 − 谷底 ${f.trough.toFixed(2)}));到价后一次性恢复平常仓位。回补前不更新前高、不重复买已用过的档位。`);
+      lines.push(p.recover === false
+        ? `回补已关闭:QQQ 创新高(≥ ${peak.toFixed(2)})时只重置前高与档位,不调整现有持仓。`
+        : `回补线 ${out.recoveryLine.toFixed(1)}(= 前高 + (前高 − 谷底 ${f.trough.toFixed(2)}));到价后一次性恢复平常仓位。回补前不更新前高、不重复买已用过的档位。`);
     }
     if (done < stages.length) {
       const s = stages[done];
@@ -457,11 +468,11 @@
     }
     const SL = p.sells || {};
     if (f.inc && f.tqTrough) {
-      const gain = f.tqNow / f.tqTrough - 1, fl = f.fired;
-      const tag = (k) => (fl[k] ? '(已执行)' : '');
-      if (SL.tq400 && SL.tq400.on) lines.push(`减仓规则 A:TQQQ 自本轮低点已涨 ${(gain * 100).toFixed(0)}%,涨到 +${(SL.tq400.pct * 100).toFixed(0)}% 时卖出 ${(SL.tq400.frac * 100).toFixed(0)}% TQQQ 换成 QQQ${tag('tq400')}。`);
-      if (SL.peak && SL.peak.on) lines.push(`减仓规则 B:QQQ ${q.toFixed(2)},回到前高 ${peak.toFixed(2)}(还差 ${((peak / q - 1) * 100).toFixed(1)}%)时卖出 ${(SL.peak.frac * 100).toFixed(0)}% TQQQ 换成 QQQ${tag('peak')}。`);
-      if (SL.tq800 && SL.tq800.on) lines.push(`减仓规则 C:TQQQ 自本轮低点已涨 ${(gain * 100).toFixed(0)}%,涨到 +${(SL.tq800.pct * 100).toFixed(0)}% 时卖出 ${(SL.tq800.frac * 100).toFixed(0)}% TQQQ,其中 ${(SL.tq800.cashShare * 100).toFixed(0)}% 换现金、其余换 QQQ${tag('tq800')}。`);
+      const gain = f.tqNow / f.tqTrough - 1;
+      (SL.tqRules || []).forEach((r, k) => {
+        lines.push(`减仓规则 ${k + 1}:TQQQ 自本轮低点已涨 ${(gain * 100).toFixed(0)}%,涨到 +${(r.pct * 100).toFixed(0)}% 时卖出 ${(r.frac * 100).toFixed(0)}% TQQQ${r.cashShare > 0 ? `(其中 ${(r.cashShare * 100).toFixed(0)}% 换现金,其余换 QQQ)` : ',换成 QQQ'}${f.firedTq[k] ? '(已执行)' : ''}。`);
+      });
+      if (SL.peak && SL.peak.on) lines.push(`减仓规则(回前高):QQQ ${q.toFixed(2)},回到前高 ${peak.toFixed(2)}(还差 ${((peak / q - 1) * 100).toFixed(1)}%)时卖出 ${(SL.peak.frac * 100).toFixed(0)}% TQQQ 换成 QQQ${f.firedPeak ? '(已执行)' : ''}。`);
     }
     if (isFinite(f.cap)) {
       const tqShare = hold.tq / holdTotal;

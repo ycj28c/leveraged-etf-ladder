@@ -77,3 +77,11 @@ table.log td:nth-child(4){text-align:left;white-space:normal;min-width:220px}
 table.log th:nth-child(4){text-align:left}
 
 footer{margin:14px 0 4px;text-align:center}footer a{color:var(--acc)}
+
+.rulehead{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.rulehead button{padding:2px 8px;font-size:12px}
+#ruleTable{table-layout:fixed;margin:0}
+#ruleTable th,#ruleTable td{padding:2px 3px}
+#ruleTable th:last-child,#ruleTable td:last-child{width:26px}
+#ruleTable input{text-align:right}
+#ruleTable button{padding:0 6px;border-color:transparent;color:var(--mut)}

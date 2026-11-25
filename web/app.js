@@ -8,6 +8,16 @@
   const money = (x) => (Math.abs(x) >= 1e8 ? (x / 1e8).toFixed(2) + '亿' : Math.abs(x) >= 1e4 ? (x / 1e4).toFixed(1) + '万' : x.toFixed(0));
   const cls = (x) => (x < 0 ? 'neg' : 'pos');
   let raw = null;
+  function syncMode() {
+    const real = $('mode').value === 'real';
+    $('baseSym').disabled = !real; $('cashYield').disabled = !real; $('expense').disabled = real;
+    $('modeHint').textContent = real
+      ? '真实模式:用真实 ETF 价格;现金按左侧"现金年化"计息;"合成年费率"不生效。'
+      : '合成模式:底仓 = SPY,现金 = 13 周国债收益率;"底仓标的""现金年化"不生效。';
+  }
+  const cashNote = () => ($('mode').value === 'real'
+    ? `现金按年化 ${(num('cashYield') * 100).toFixed(2)}% 计息,底仓 ${$('baseSym').value}`
+    : '现金按 13 周国债收益率计息,底仓 SPY;QLD/TQQQ 为合成');
   const openState = {};
   const secKey = (d) => d.querySelector('summary').textContent.split('(')[0].trim();
   const sec = (title, body, open) => `<details class="sec"${open ? ' open' : ''}><summary>${title}</summary>${body}</details>`;
@@ -56,7 +66,7 @@
   function buildDataset(startOverride) {
     const start = startOverride || $('start').value || null;
     if ($('mode').value === 'real') {
-      return E.buildReal(raw, { base: $('baseSym').value, start: start || '2016-11-22', cashYield: num('cashYield') || 0 });
+      return E.buildReal(raw, { base: $('baseSym').value, start: start || '2016-11-22', cashYield: isFinite(num('cashYield')) ? num('cashYield') : 0 });
     }
     return E.buildSynthetic(raw, { start, expense: num('expense') });
   }
@@ -133,12 +143,20 @@
     const S = { QQQ: stat(hs.QQQ), B2: stat(hs.B2), BASE: stat(hs.BASE) };
     const uwTxt = (u) => (u.to ? `${u.days} 交易日` : `${u.days} 交易日(至今未恢复)`);
 
-    let ov = `<div class="kv"><div>终值<b>${money(a.finalValue)}</b></div><div>年化 CAGR<b>${pct(a.cagr)}</b></div><div>最大回撤<b class="neg">${pct(a.mdd)}</b></div><div>Sharpe<b>${a.sharpe.toFixed(2)}</b></div>${P.ext ? `<div>IRR / MOIC<b>${pct(a.irr)} / ${a.moic.toFixed(1)}x</b></div>` : ''}</div>`;
+    const extEv = res.events.filter((e) => e.type === 'ext');
+    const extSum = extEv.reduce((t, e) => t + e.amt, 0);
+    let qpk = -Infinity, qdd = 0;
+    for (let i = 0; i <= n; i++) { qpk = Math.max(qpk, ds.QQQ[i]); qdd = Math.max(qdd, 1 - ds.QQQ[i] / qpk); }
+    let ov = `<p class="muted small">${cashNote()}。</p>`;
+    if (P.ext) ov += extEv.length
+      ? `<p class="muted small">外部资金已启用:共触发 ${extEv.length} 笔,合计 ${money(extSum)}(起始资金的 ${(extSum / P.capital * 100).toFixed(0)}%),详见操作日志。</p>`
+      : `<p class="warn">已启用外部资金,但该区间内 QQQ 最大回撤只有 ${(qdd * 100).toFixed(1)}%,未达到触发阈值 ${(P.ext.thr[0] * 100).toFixed(0)}%,所以没有追加。可把起始日期改早(如合成模式 1999 年),或调低触发回撤。</p>`;
+    ov += `<div class="kv"><div>终值<b>${money(a.finalValue)}</b></div><div>年化 CAGR<b>${pct(a.cagr)}</b></div><div>最大回撤<b class="neg">${pct(a.mdd)}</b></div><div>Sharpe<b>${a.sharpe.toFixed(2)}</b></div>${P.ext ? `<div>IRR / MOIC<b>${pct(a.irr)} / ${a.moic.toFixed(1)}x</b></div><div>外部资金<b>${extEv.length} 笔 / ${money(extSum)}</b></div>` : ''}</div>`;
     ov += '<div class="scroll"><table><thead><tr><th></th><th>阶梯策略</th><th>持有 QQQ</th><th>持有 QLD</th><th>持有 ' + baseName + '</th></tr></thead><tbody>';
     ov += row('终值', [money(a.finalValue), money(S.QQQ.final), money(S.B2.final), money(S.BASE.final)]);
-    if (P.ext) h += row('累计投入(含外部资金)', [money(a.invested), '-', '-', '-']);
+    if (P.ext) ov += row('累计投入(含外部资金)', [money(a.invested), '-', '-', '-']);
     ov += row('年化 CAGR' + (P.ext ? '(时间加权)' : ''), [pct(a.cagr), pct(S.QQQ.cagr), pct(S.B2.cagr), pct(S.BASE.cagr)]);
-    if (P.ext) h += row('IRR / MOIC', [`${pct(a.irr)} / ${a.moic.toFixed(1)}x`, '-', '-', '-']);
+    if (P.ext) ov += row('IRR / MOIC', [`${pct(a.irr)} / ${a.moic.toFixed(1)}x`, '-', '-', '-']);
     ov += row('年化波动', [pct(a.vol), pct(S.QQQ.vol), pct(S.B2.vol), pct(S.BASE.vol)]);
     ov += row('Sharpe(rf=0)', [a.sharpe.toFixed(2), S.QQQ.sharpe.toFixed(2), S.B2.sharpe.toFixed(2), S.BASE.sharpe.toFixed(2)]);
     ov += row('最大回撤', [`${pct(a.mdd)} (${a.mddDate})`, `${pct(S.QQQ.mdd)} (${S.QQQ.mddDate})`, `${pct(S.B2.mdd)} (${S.B2.mddDate})`, `${pct(S.BASE.mdd)} (${S.BASE.mddDate})`]);
@@ -242,7 +260,7 @@
     const curVol = E.trailingVol(ds.vol, ds.vol.dates.length - 1, 252);
     const adv = E.advise(ds, P2, E.total(actual) > 0 ? actual : null);
     const s = adv.state;
-    let h = note + `<div class="kv">
+    let h = note + `<p class="muted small">${cashNote()}。</p><div class="kv">
       <div>日期<b>${s.date}</b></div><div>QQQ<b>${s.qqq.toFixed(2)}</b></div><div>冻结前高<b>${s.peak.toFixed(2)}</b></div>
       <div>回撤<b class="neg">${pct(-s.dd)}</b></div><div>已触发档数<b>${s.stage}/${P.stages.length}</b></div>
       <div>回补线<b>${adv.recoveryLine ? adv.recoveryLine.toFixed(1) : '-'}</b></div>
@@ -264,11 +282,12 @@
   /* ---------- init ---------- */
   function resetDefaults() {
     $('mode').value = 'synthetic'; $('start').value = '1999-03-10'; $('capital').value = 1000000; $('baseSym').value = 'VOO';
-    $('cashYield').value = 0; $('expense').value = 0.0095;
+    $('cashYield').value = 0.02; $('expense').value = 0.0095;
     $('w_tq').value = 0; $('w_base').value = 70; $('w_b2').value = 15; $('w_cash').value = 15;
     $('capMode').value = 'const'; $('capConst').value = 50; $('capK').value = 11; $('capLo').value = 20; $('capHi').value = 70;
     $('extOn').checked = false; $('extThr').value = '35,40,45,50'; $('extAmt').value = 10; $('extAsset').value = 'base';
     buildStageTable(DEFAULT_STAGE_ROWS);
+    syncMode();
   }
 
   function init() {
@@ -293,7 +312,7 @@
     $('resetBtn').onclick = () => { resetDefaults(); };
     ['w_tq', 'w_base', 'w_b2', 'w_cash'].forEach((id) => $(id).addEventListener('input', () => validate(readParams())));
     validate(readParams());
-    $('mode').onchange = () => { $('start').value = $('mode').value === 'real' ? '2016-11-22' : '1999-03-10'; };
+    $('mode').onchange = () => { syncMode(); $('start').value = $('mode').value === 'real' ? '2016-11-22' : '1999-03-10'; };
   }
 
   function load() {

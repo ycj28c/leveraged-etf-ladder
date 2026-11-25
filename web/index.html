@@ -30,11 +30,12 @@
           <label>起始资金 <input id="capital" type="number" value="1000000" min="1"></label>
         </div>
         <div class="row2">
-          <label>底仓标的(真实模式)
+          <label>底仓标的
             <select id="baseSym"><option>VOO</option><option>SPMO</option></select></label>
-          <label>现金年化(真实模式) <input id="cashYield" type="number" step="0.001" value="0"></label>
+          <label>现金年化(小数,0.02=2%) <input id="cashYield" type="number" step="0.005" value="0.02"></label>
         </div>
         <label>合成 ETF 年费率 <input id="expense" type="number" step="0.0005" value="0.0095"></label>
+        <small id="modeHint" class="muted"></small>
       </div>
     </details>
 
@@ -80,6 +81,7 @@
       <div class="f">
         <label class="inline"><input id="extOn" type="checkbox"> 启用</label>
         <label>触发回撤 %(逗号分隔)<input id="extThr" value="35,40,45,50"></label>
+        <small class="muted">只有回撤达到阈值才会触发。2016 年起的真实区间 QQQ 最大回撤约 35%,几乎不触发;1999 起的合成区间会触发。</small>
         <div class="row2">
           <label>每次追加(占起始资金 %)<input id="extAmt" type="number" value="10"></label>
           <label>买入标的

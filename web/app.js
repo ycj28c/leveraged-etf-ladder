@@ -14,8 +14,8 @@
     const real = $('mode').value === 'real';
     $('cashYield').disabled = !real; $('expense').disabled = real;
     $('modeHint').textContent = real
-      ? '真实模式:用真实 ETF 价格;现金按左侧"现金年化"计息;"合成年费率"不生效。'
-      : '合成模式:底仓选 QQQ 则用 QQQ,选 VOO/SPMO 则用 SPY 代替;现金 = 13 周国债收益率;"现金年化"不生效。';
+      ? '真实:用真实 ETF 价格,现金按"现金年化"计息。'
+      : '合成:VOO/SPMO 用 SPY 代替(选 QQQ 则用 QQQ),现金用国债收益率。';
   }
   function syncExt() { $('extCap').disabled = $('extAsset').value !== 'tq'; }
   const cashNote = () => ($('mode').value === 'real'

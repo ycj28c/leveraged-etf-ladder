@@ -8,6 +8,9 @@
   const money = (x) => (Math.abs(x) >= 1e8 ? (x / 1e8).toFixed(2) + '亿' : Math.abs(x) >= 1e4 ? (x / 1e4).toFixed(1) + '万' : x.toFixed(0));
   const cls = (x) => (x < 0 ? 'neg' : 'pos');
   let raw = null;
+  const openState = {};
+  const secKey = (d) => d.querySelector('summary').textContent.split('(')[0].trim();
+  const sec = (title, body, open) => `<details class="sec"${open ? ' open' : ''}><summary>${title}</summary>${body}</details>`;
 
   const DEFAULT_STAGE_ROWS = E.DEFAULT_STAGES.map((s) => [s.dd * 100, s.fb * 100, s.fc * 100]);
 
@@ -71,6 +74,7 @@
   function lineChart(canvas, dates, series, opt) {
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
+    if (!W) return;
     canvas.width = W * dpr; canvas.height = H * dpr;
     const g = canvas.getContext('2d');
     g.scale(dpr, dpr);
@@ -129,30 +133,30 @@
     const S = { QQQ: stat(hs.QQQ), B2: stat(hs.B2), BASE: stat(hs.BASE) };
     const uwTxt = (u) => (u.to ? `${u.days} 交易日` : `${u.days} 交易日(至今未恢复)`);
 
-    let h = `<h2>${dates[0]} → ${dates[n]}(${a.years.toFixed(1)} 年)</h2>`;
-    h += `<div class="kv"><div>终值<b>${money(a.finalValue)}</b></div><div>年化 CAGR<b>${pct(a.cagr)}</b></div><div>最大回撤<b class="neg">${pct(a.mdd)}</b></div><div>Sharpe<b>${a.sharpe.toFixed(2)}</b></div>${P.ext ? `<div>IRR / MOIC<b>${pct(a.irr)} / ${a.moic.toFixed(1)}x</b></div>` : ''}</div>`;
-    h += '<div class="scroll"><table><thead><tr><th></th><th>阶梯策略</th><th>持有 QQQ</th><th>持有 QLD</th><th>持有 ' + baseName + '</th></tr></thead><tbody>';
-    h += row('终值', [money(a.finalValue), money(S.QQQ.final), money(S.B2.final), money(S.BASE.final)]);
+    let ov = `<div class="kv"><div>终值<b>${money(a.finalValue)}</b></div><div>年化 CAGR<b>${pct(a.cagr)}</b></div><div>最大回撤<b class="neg">${pct(a.mdd)}</b></div><div>Sharpe<b>${a.sharpe.toFixed(2)}</b></div>${P.ext ? `<div>IRR / MOIC<b>${pct(a.irr)} / ${a.moic.toFixed(1)}x</b></div>` : ''}</div>`;
+    ov += '<div class="scroll"><table><thead><tr><th></th><th>阶梯策略</th><th>持有 QQQ</th><th>持有 QLD</th><th>持有 ' + baseName + '</th></tr></thead><tbody>';
+    ov += row('终值', [money(a.finalValue), money(S.QQQ.final), money(S.B2.final), money(S.BASE.final)]);
     if (P.ext) h += row('累计投入(含外部资金)', [money(a.invested), '-', '-', '-']);
-    h += row('年化 CAGR' + (P.ext ? '(时间加权)' : ''), [pct(a.cagr), pct(S.QQQ.cagr), pct(S.B2.cagr), pct(S.BASE.cagr)]);
+    ov += row('年化 CAGR' + (P.ext ? '(时间加权)' : ''), [pct(a.cagr), pct(S.QQQ.cagr), pct(S.B2.cagr), pct(S.BASE.cagr)]);
     if (P.ext) h += row('IRR / MOIC', [`${pct(a.irr)} / ${a.moic.toFixed(1)}x`, '-', '-', '-']);
-    h += row('年化波动', [pct(a.vol), pct(S.QQQ.vol), pct(S.B2.vol), pct(S.BASE.vol)]);
-    h += row('Sharpe(rf=0)', [a.sharpe.toFixed(2), S.QQQ.sharpe.toFixed(2), S.B2.sharpe.toFixed(2), S.BASE.sharpe.toFixed(2)]);
-    h += row('最大回撤', [`${pct(a.mdd)} (${a.mddDate})`, `${pct(S.QQQ.mdd)} (${S.QQQ.mddDate})`, `${pct(S.B2.mdd)} (${S.B2.mddDate})`, `${pct(S.BASE.mdd)} (${S.BASE.mddDate})`]);
-    h += row('最长回到前高时间', [uwTxt(a.underwater), uwTxt(S.QQQ.uw), uwTxt(S.B2.uw), uwTxt(S.BASE.uw)]);
-    h += '</tbody></table></div>';
+    ov += row('年化波动', [pct(a.vol), pct(S.QQQ.vol), pct(S.B2.vol), pct(S.BASE.vol)]);
+    ov += row('Sharpe(rf=0)', [a.sharpe.toFixed(2), S.QQQ.sharpe.toFixed(2), S.B2.sharpe.toFixed(2), S.BASE.sharpe.toFixed(2)]);
+    ov += row('最大回撤', [`${pct(a.mdd)} (${a.mddDate})`, `${pct(S.QQQ.mdd)} (${S.QQQ.mddDate})`, `${pct(S.B2.mdd)} (${S.B2.mddDate})`, `${pct(S.BASE.mdd)} (${S.BASE.mddDate})`]);
+    ov += row('最长回到前高时间', [uwTxt(a.underwater), uwTxt(S.QQQ.uw), uwTxt(S.B2.uw), uwTxt(S.BASE.uw)]);
+    ov += '</tbody></table></div>';
 
     const eqSeries = [
       { name: '阶梯策略', color: '#2358d6', y: res.values, w: 2 },
       { name: 'QQQ', color: '#e08a00', y: hs.QQQ }, { name: 'QLD', color: '#c0392b', y: hs.B2 }, { name: baseName, color: '#1b8a4b', y: hs.BASE },
     ];
-    h += '<div class="charts"><div><h3>资产曲线(对数坐标' + (P.ext ? ';策略含外部资金' : '') + ')</h3>' + legend(eqSeries) + '<canvas id="cEq"></canvas></div>';
+    let ch = '<div class="charts"><div><h3>资产曲线(对数坐标' + (P.ext ? ';策略含外部资金' : '') + ')</h3>' + legend(eqSeries) + '<canvas id="cEq"></canvas></div>';
     const dd = (v) => { let pk = -Infinity; return v.map((x) => { pk = Math.max(pk, x); return x / pk - 1; }); };
     const ddSeries = [
       { name: '阶梯策略', color: '#2358d6', y: dd(a.idx), w: 1.6 }, { name: 'QQQ', color: '#e08a00', y: dd(hs.QQQ) }, { name: 'QLD', color: '#c0392b', y: dd(hs.B2) },
     ];
-    h += '<div><h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas></div></div>';
+    ch += '<div><h3>回撤' + (P.ext ? '(策略为时间加权)' : '') + '</h3>' + legend(ddSeries) + '<canvas id="cDd"></canvas></div></div>';
 
+    let h = `<h2>${dates[0]} → ${dates[n]}(${a.years.toFixed(1)} 年)</h2>` + sec('概览', ov, true) + sec('资产曲线与回撤', ch, true);
     const ys = E.yearly(a.idx, dates, null), yq = E.yearly(hs.QQQ, dates), y2 = E.yearly(hs.B2, dates), yb = E.yearly(hs.BASE, dates);
     h += '<details class="sec"><summary>按年度收益</summary><div class="scroll"><table><thead><tr><th>年份</th><th>策略</th><th>策略年内最大回撤</th><th>QQQ</th><th>QLD</th><th>' + baseName + '</th></tr></thead><tbody>';
     ys.forEach((r, i) => {
@@ -175,23 +179,41 @@
       else h += row(e.date, ['外部资金', e.qqq.toFixed(2), `回撤 ${(e.dd * 100).toFixed(1)}% ≥ ${(e.th * 100).toFixed(0)}%,追加 ${money(e.amt)} → ${e.asset === 'tq' ? 'TQQQ' : '底仓'}`]);
     });
     h += '</tbody></table></div></details>';
-    h += '<details class="sec"><summary>滚动 5 年窗口分布</summary><div id="rollBox"><button id="rollBtn">计算(约几秒)</button></div></details>';
+    h += sec('滚动 5 年窗口分布', '<div id="rollBox" class="muted">展开后自动计算…</div>', false);
     out.innerHTML = h;
 
-    lineChart($('cEq'), dates, eqSeries, { log: true, fmt: money });
-    lineChart($('cDd'), dates, ddSeries, { log: false, fmt: (v) => pct(v, 0), zero: 0, min: -1 });
-    $('rollBtn').onclick = () => {
-      $('rollBox').innerHTML = '计算中…';
+    const drawCharts = () => {
+      lineChart($('cEq'), dates, eqSeries, { log: true, fmt: money });
+      lineChart($('cDd'), dates, ddSeries, { log: false, fmt: (v) => pct(v, 0), zero: 0, min: -1 });
+    };
+    let rollStarted = false;
+    const computeRolling = () => {
+      if (rollStarted) return;
+      rollStarted = true;
+      const box = $('rollBox');
+      box.textContent = '计算中…';
       setTimeout(() => {
-        if (ds.dates.length < 252 * 5 + 40) { $('rollBox').innerHTML = '<p class="muted">数据不足 5 年。</p>'; return; }
+        if (ds.dates.length < 252 * 5 + 40) { box.innerHTML = '<p class="muted">数据不足 5 年。</p>'; return; }
         const r = E.rolling(ds, P, { years: 5, step: 20 });
-        $('rollBox').innerHTML = `<h3>滚动 5 年窗口(每 20 个交易日一个起点,共 ${r.n} 个;起点按当时前高与回撤档位初始化)</h3><div class="kv">
+        box.innerHTML = `<p class="muted">每 20 个交易日一个起点,共 ${r.n} 个窗口;起点按当时前高与回撤档位初始化。</p><div class="kv">
           <div>最差<b>${r.worst.toFixed(2)}x</b></div><div>10 分位<b>${r.p10.toFixed(2)}x</b></div><div>中位数<b>${r.median.toFixed(2)}x</b></div>
           <div>均值<b>${r.mean.toFixed(2)}x</b></div><div>几何均值<b>${r.geomean.toFixed(2)}x</b></div><div>最好<b>${r.best.toFixed(2)}x</b></div>
           <div>5 年亏损占比<b>${pct(r.lossShare, 0)}</b></div><div>5 年 ≥3.33x 占比<b>${pct(r.targetShare, 0)}</b></div></div>
           <p class="muted">倍数 = 终值 ÷ (起始资金 + 外部资金)。窗口彼此高度重叠,不是独立样本。</p>`;
       }, 30);
     };
+    out.querySelectorAll('details.sec').forEach((d) => {
+      const k = secKey(d);
+      if (openState[k] !== undefined) d.open = openState[k];
+      d.addEventListener('toggle', () => {
+        openState[k] = d.open;
+        if (!d.open) return;
+        if (k === '资产曲线与回撤') drawCharts();
+        if (k === '滚动 5 年窗口分布') computeRolling();
+      });
+      if (d.open && k === '滚动 5 年窗口分布') computeRolling();
+    });
+    drawCharts();
   }
 
   /* ---------- current state ---------- */
@@ -217,18 +239,21 @@
       P2.startIndex = pi;
     }
     const actual = ['tq', 'base', 'b2', 'cash'].reduce((o, k) => { o[k] = parseFloat($('a_' + k).value) || 0; return o; }, {});
+    const curVol = E.trailingVol(ds.vol, ds.vol.dates.length - 1, 252);
     const adv = E.advise(ds, P2, E.total(actual) > 0 ? actual : null);
     const s = adv.state;
     let h = note + `<div class="kv">
       <div>日期<b>${s.date}</b></div><div>QQQ<b>${s.qqq.toFixed(2)}</b></div><div>冻结前高<b>${s.peak.toFixed(2)}</b></div>
       <div>回撤<b class="neg">${pct(-s.dd)}</b></div><div>已触发档数<b>${s.stage}/${P.stages.length}</b></div>
       <div>回补线<b>${adv.recoveryLine ? adv.recoveryLine.toFixed(1) : '-'}</b></div>
-      <div>TQQQ 上限<b>${isFinite(s.cap) ? pct(s.cap, 0) : '无'}</b></div></div>`;
+      <div>TQQQ 上限<b>${isFinite(s.cap) ? pct(s.cap, 0) : '无'}</b></div>
+      <div>QQQ 年化波动(近 252 日)<b>${curVol === null ? '-' : pct(curVol)}</b></div>
+      <div>按 K 算的上限(K÷波动)<b>${curVol === null ? '-' : pct(Math.min(P.capHi, Math.max(P.capLo, P.capK / Math.max(0.05, curVol))), 0)}</b></div></div>`;
     h += '<h3>建议</h3><ul class="advice">' + adv.lines.map((l) => `<li>${l}</li>`).join('') + '</ul>';
     h += '<h3>各档触发价</h3><div class="scroll"><table><thead><tr><th>回撤</th><th>QQQ 触发价</th><th>距现价</th><th>状态</th></tr></thead><tbody>' +
       adv.triggers.map((t) => row(`−${(t.dd * 100).toFixed(0)}%`, [t.price.toFixed(2), pct(t.away), t.done ? '已触发' : '未触发'])).join('') + '</tbody></table></div>';
-    const w = (o, t) => ['tq', 'base', 'b2', 'cash'].map((k) => `${money(o[k])}(${pct(o[k] / t)})`);
-    h += `<h3>${adv.usingActual ? '规则模拟持仓 vs 你的实际持仓' : '规则模拟持仓'}(按 ${$('capital').value} 起始资金推演)</h3><div class="scroll"><table><thead><tr><th></th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>现金</th></tr></thead><tbody>` +
+    const w = (o, t) => ['tq', 'base', 'b2', 'cash'].map((k) => `${money(o[k])}(${pct(o[k] / t)})`).concat([`<b>${money(t)}</b>(100%)`]);
+    h += `<h3>${adv.usingActual ? '规则模拟持仓 vs 你的实际持仓' : '规则模拟持仓'}(按 ${$('capital').value} 起始资金推演)</h3><div class="scroll"><table><thead><tr><th></th><th>TQQQ</th><th>底仓</th><th>QLD</th><th>现金</th><th>合计</th></tr></thead><tbody>` +
       row('规则模拟', w(adv.sim, adv.simTotal)) + (adv.usingActual ? row('实际', w(actual, E.total(actual))) : '') + '</tbody></table></div>';
     h += '<p class="muted">模拟持仓为"从最近前高起按收盘价推演"的结果,与你的真实成交会有偏差(盘中触发、成交价、费用)。仅供参考,不构成投资建议。</p>';
     const recent = adv.events.slice(-8);

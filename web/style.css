@@ -59,3 +59,13 @@ details.sec[open]{padding-bottom:6px}
 details.sec summary{padding:4px 0}
 .charts{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 canvas{height:220px}
+
+.about h2{font-size:16px}
+.about .lead{font-size:14px;background:var(--bg);border-left:3px solid var(--acc);padding:8px 12px;border-radius:4px;margin:6px 0 14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:6px}
+.card{border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--bg)}
+.card h4{margin:0 0 4px;font-size:13px;color:var(--acc)}
+.card p{margin:0}
+table.steps{max-width:460px}
+table.steps th,table.steps td{text-align:center}
+.about ul{padding-left:18px}.about li{margin:4px 0}

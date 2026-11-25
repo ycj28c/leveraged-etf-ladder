@@ -66,12 +66,14 @@
     return P;
   }
 
-  function buildDataset(startOverride) {
+  // useEnd=false ignores the end date (the "current position" tab always runs to the latest bar).
+  function buildDataset(startOverride, useEnd = true) {
     const start = startOverride || $('start').value || null;
+    const end = useEnd ? $('end').value || null : null;
     if ($('mode').value === 'real') {
-      return E.buildReal(raw, { base: $('baseSym').value, start: start || '2016-11-22', cashYield: isFinite(num('cashYield')) ? num('cashYield') : 0 });
+      return E.buildReal(raw, { base: $('baseSym').value, start: start || '2016-11-22', end, cashYield: isFinite(num('cashYield')) ? num('cashYield') : 0 });
     }
-    return E.buildSynthetic(raw, { start, expense: num('expense') });
+    return E.buildSynthetic(raw, { start, end, expense: num('expense') });
   }
 
   function validate(P) {
@@ -80,6 +82,7 @@
     if (Math.abs(s - 1) > 1e-6) return '平常仓位合计必须为 100%。';
     if (!P.stages.length) return '至少需要一档阶梯。';
     if (!(P.capital > 0)) return '起始资金必须大于 0。';
+    if ($('start').value && $('end').value && $('end').value <= $('start').value) return '结束日期必须晚于起始日期。';
     return null;
   }
 
@@ -258,7 +261,7 @@
     const err = validate(P);
     const out = $('nowOut');
     if (err) { out.innerHTML = `<p class="neg">${err}</p>`; return; }
-    let ds = buildDataset($('mode').value === 'real' ? undefined : '1999-01-01');
+    let ds = buildDataset($('mode').value === 'real' ? undefined : '1999-01-01', false);
     const man = parseFloat($('manQ').value);
     let note = '';
     if (isFinite(man) && man > 0) {
@@ -299,7 +302,7 @@
 
   /* ---------- init ---------- */
   function resetDefaults() {
-    $('mode').value = 'synthetic'; $('start').value = '1999-03-10'; $('capital').value = 1000000; $('baseSym').value = 'VOO';
+    $('mode').value = 'synthetic'; $('start').value = '1999-03-10'; $('end').value = ''; $('capital').value = 1000000; $('baseSym').value = 'VOO';
     $('cashYield').value = 0.02; $('expense').value = 0.0095;
     $('w_tq').value = 0; $('w_base').value = 70; $('w_b2').value = 15; $('w_cash').value = 15;
     $('capMode').value = 'const'; $('capConst').value = 50; $('capK').value = 11; $('capLo').value = 20; $('capHi').value = 70;
@@ -331,7 +334,7 @@
     $('resetBtn').onclick = () => { resetDefaults(); };
     ['w_tq', 'w_base', 'w_b2', 'w_cash'].forEach((id) => $(id).addEventListener('input', () => validate(readParams())));
     validate(readParams());
-    $('mode').onchange = () => { syncMode(); $('start').value = $('mode').value === 'real' ? '2016-11-22' : '1999-03-10'; };
+    $('mode').onchange = () => { syncMode(); $('end').value = ''; $('start').value = $('mode').value === 'real' ? '2016-11-22' : '1999-03-10'; };
   }
 
   function load() {

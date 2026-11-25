@@ -27,14 +27,17 @@
           </select></label>
         <div class="row2">
           <label>起始日期 <input id="start" type="date"></label>
-          <label>起始资金 <input id="capital" type="number" value="1000000" min="1"></label>
+          <label>结束日期(留空=最新) <input id="end" type="date"></label>
         </div>
         <div class="row2">
+          <label>起始资金 <input id="capital" type="number" value="1000000" min="1"></label>
           <label>底仓标的
             <select id="baseSym"><option>VOO</option><option>SPMO</option></select></label>
-          <label>现金年化(真实模式) <input id="cashYield" type="number" step="0.005" value="0.02"></label>
         </div>
-        <label>合成 ETF 年费率 <input id="expense" type="number" step="0.0005" value="0.0095"></label>
+        <div class="row2">
+          <label>现金年化(真实模式) <input id="cashYield" type="number" step="0.005" value="0.02"></label>
+          <label>合成 ETF 年费率 <input id="expense" type="number" step="0.0005" value="0.0095"></label>
+        </div>
         <small id="modeHint" class="muted"></small>
       </div>
     </details>

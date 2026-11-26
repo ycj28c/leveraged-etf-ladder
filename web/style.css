@@ -101,3 +101,9 @@ aside small{font-size:11px;line-height:1.35}
 aside .muted.small{margin:4px 0 0}
 
 #ruleTable.off{opacity:.45}
+
+.hvline{position:absolute;width:0;border-left:1px dashed #888;pointer-events:none;display:none}
+.hvtip{position:absolute;display:none;pointer-events:none;background:rgba(255,255,255,.96);border:1px solid #c8ccd4;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);padding:6px 9px;font-size:12px;line-height:1.5;white-space:nowrap;z-index:5}
+.hvtip .r{display:flex;justify-content:space-between;gap:14px}
+.hvtip .s{margin-top:4px;color:#777;font-size:11px}
+.hvtip small{color:#888}

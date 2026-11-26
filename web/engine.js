@@ -216,6 +216,7 @@
     }
 
     const values = [total(v)], contribs = [0], events = [];
+    const holds = p.trackHold ? [Object.assign({}, v)] : null;
     for (let i = i0 + 1; i <= i1; i++) {
       v.tq *= ds.TQ[i] / ds.TQ[i - 1];
       v.base *= ds.BASE[i] / ds.BASE[i - 1];
@@ -281,9 +282,10 @@
         stage++;
       }
       values.push(total(v)); contribs.push(contrib);
+      if (holds) holds.push(Object.assign({}, v));
     }
     return {
-      dates: ds.dates.slice(i0, i1 + 1), values, contribs, events,
+      dates: ds.dates.slice(i0, i1 + 1), values, contribs, events, holds,
       final: { holdings: v, stage, inc, peak, trough, tqTrough: tqTr, tqNow: ds.TQ[i1], firedTq: firedTq.slice(), extDone: ei, qqq: ds.QQQ[i1], date: ds.dates[i1], cap: capFn(ds.dates[i1]) },
       params: p,
     };

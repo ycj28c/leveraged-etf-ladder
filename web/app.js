@@ -118,6 +118,37 @@
   }
 
   /* ---------- charts ---------- */
+  /* Crosshair + tooltip: a vertical line and a floating box over the canvas (no redraw needed). */
+  function attachHover(canvas, n, m, tip) {
+    if (!tip || n < 2) return;
+    const host = canvas.parentElement;
+    host.style.position = 'relative';
+    if (!canvas._hv) {
+      const line = document.createElement('div'), box = document.createElement('div');
+      line.className = 'hvline'; box.className = 'hvtip';
+      host.append(line, box);
+      canvas._hv = { line, box };
+    }
+    const { line, box } = canvas._hv;
+    const hide = () => { line.style.display = 'none'; box.style.display = 'none'; };
+    canvas.onmouseleave = hide;
+    canvas.onmousemove = (e) => {
+      const span = m.W - m.L - m.R;
+      const x = Math.min(m.W - m.R, Math.max(m.L, e.offsetX));
+      const i = Math.max(0, Math.min(n - 1, Math.round(((x - m.L) / span) * (n - 1))));
+      const xi = m.L + (span * i) / (n - 1);
+      line.style.display = box.style.display = 'block';
+      line.style.left = canvas.offsetLeft + xi + 'px';
+      line.style.top = canvas.offsetTop + 'px';
+      line.style.height = canvas.clientHeight + 'px';
+      box.innerHTML = tip(i);
+      const bw = box.offsetWidth;
+      const left = xi + 14 + bw > m.W ? xi - 14 - bw : xi + 14;
+      box.style.left = canvas.offsetLeft + Math.max(0, left) + 'px';
+      box.style.top = canvas.offsetTop + 6 + 'px';
+    };
+  }
+
   function lineChart(canvas, dates, series, opt) {
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -150,6 +181,7 @@
       if (y !== lastYear && y % (dates.length > 3000 ? 5 : 1) === 0) { g.fillText(y, X(i) - 12, H - 6); }
       lastYear = y;
     });
+    attachHover(canvas, dates.length, { L, R, W }, opt.tip);
     series.forEach((s) => {
       g.strokeStyle = s.color; g.lineWidth = s.w || 1.4; g.beginPath();
       const step = Math.max(1, Math.floor(dates.length / (W * 2)));
@@ -170,7 +202,7 @@
     if (err) { out.innerHTML = `<p class="neg">${err}</p>`; return; }
     const ds = buildDataset();
     if (ds.dates.length < 60) { out.innerHTML = '<p class="neg">所选区间数据不足。</p>'; return; }
-    const res = E.run(ds, P);
+    const res = E.run(ds, Object.assign({}, P, { trackHold: true }));
     const a = E.analyze(res);
     const n = res.values.length - 1, dates = res.dates;
     const hold = (k) => E.holdSeries(ds, k, P.capital, 0, n);
@@ -257,9 +289,23 @@
     h += sec('滚动 5 年窗口分布', '<div id="rollBox" class="muted">展开后自动计算…</div>', false);
     out.innerHTML = h;
 
+    const tipBase = (i) => {
+      const t = res.values[i], hd = res.holds ? res.holds[i] : null;
+      let x = `<b>${dates[i]}</b><div class="r"><span style="color:#2358d6">阶梯策略总值</span><b>${money(t)}</b></div>`;
+      if (hd) {
+        x += '<div class="s">策略持仓</div>' + [['TQQQ', 'tq'], [baseName, 'base'], ['QLD', 'b2'], ['现金', 'cash']]
+          .map(([nm, k]) => `<div class="r"><span>${nm}</span><span>${money(hd[k])} <small>${pct(hd[k] / t, 0)}</small></span></div>`).join('');
+      }
+      return x;
+    };
+    const tipEq = (i) => tipBase(i) + '<div class="s">同期单独持有(起始资金)</div>' + [['QQQ', hs.QQQ, '#e08a00'], ['QLD', hs.B2, '#c0392b'], ['TQQQ', hs.TQ, '#8e44ad'], [baseName, hs.BASE, '#1b8a4b']]
+      .map(([nm, arr, col]) => `<div class="r"><span style="color:${col}">${nm}</span><span>${money(arr[i])}</span></div>`).join('');
+    const tipDd = (i) => `<b>${dates[i]}</b><div class="s">当日距前高回撤</div>` + ddSeries
+      .map((sr) => `<div class="r"><span style="color:${sr.color}">${sr.name}</span><span>${pct(sr.y[i])}</span></div>`).join('') +
+      `<div class="r"><span>策略总值</span><span>${money(res.values[i])}</span></div>`;
     const drawCharts = () => {
-      lineChart($('cEq'), dates, eqSeries, { log: true, fmt: money });
-      lineChart($('cDd'), dates, ddSeries, { log: false, fmt: (v) => pct(v, 0), zero: 0, min: -1 });
+      lineChart($('cEq'), dates, eqSeries, { log: true, fmt: money, tip: tipEq });
+      lineChart($('cDd'), dates, ddSeries, { log: false, fmt: (v) => pct(v, 0), zero: 0, min: -1, tip: tipDd });
     };
     let rollStarted = false;
     const computeRolling = () => {

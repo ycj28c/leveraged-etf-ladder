@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -19,3 +20,7 @@ jobs:
           git add data/prices.json
           git commit -m "chore: update price data"
           git push
+          # Pushes made with GITHUB_TOKEN do not trigger other workflows, so start the Pages deploy explicitly.
+          gh workflow run pages.yml --ref "${GITHUB_REF_NAME}"
+        env:
+          GH_TOKEN: ${{ github.token }}

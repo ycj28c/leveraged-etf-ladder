@@ -397,7 +397,7 @@
 
   function load() {
     const urls = ['data/prices.json', '../data/prices.json'];
-    const attempt = (i) => fetch(urls[i]).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    const attempt = (i) => fetch(urls[i], { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .catch((e) => { if (i + 1 < urls.length) return attempt(i + 1); throw e; });
     attempt(0).then((j) => {
       raw = j;
